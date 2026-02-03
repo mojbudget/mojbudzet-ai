@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MainCategory, SubCategoryMap, AICategorizationResponse, AISuggestedBudget, FinancialGoal } from "../types";
 
-// Читање на API клучот од околината (Vite го вбризгува преку define во vite.config.ts)
+// Читање на API клучот од околината
 const getApiKey = () => {
   try {
     return (process.env as any).API_KEY || "";
@@ -24,7 +24,7 @@ export const categorizeTransactionsBatch = async (
       model: "gemini-3-flash-preview",
       contents: `Категоризирај ги следниве трансакции (одливи/приливи): ${JSON.stringify(items)}. 
       Користи ги овие категории: ${schemaStr}.
-      За секоја трансакција (според нејзиното ID), врати соодветна mainCategory и subCategory.`,
+      За секоја трансакција (според нејзиното ID), врати соодветна mainCategory и subCategory. Врати само чист JSON.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -66,20 +66,20 @@ export const analyzeReceiptImage = async (base64Image: string, customCategories:
           }
         },
         {
-          text: `Анализирај ја оваа македонска фискална сметка (може да биде и делумна слика). 
-          Фокусирај се на името на трговецот (пр. Vero, Tinex, Kam, Kipper, Makpetrol, Lukoil, Zegin).
+          text: `Ти си експерт за анализа на МАКЕДОНСКИ фискални сметки. 
+          На сликата има македонска фискална сметка која содржи текст и QR код на дното.
           
-          ЛОГИКА ЗА КАТЕГОРИЗАЦИЈА:
-          - Ако трговецот е Маркет (Веро, Тинекс, КАМ, Стокомак, Кипер, Рамстор) -> Категорија: "Потреби", Поткатегорија: "Храна и пијалоци".
-          - Ако трговецот е Аптека (Зегин, Еурофарм) -> Категорија: "Потреби", Поткатегорија: "Здравје".
-          - Ако трговецот е Бензинска (Макпетрол, Лукоил, Окта) -> Категорија: "Потреби", Поткатегорија: "Транспорт".
-          - Ако трговецот е Ресторан/Кафуле -> Категорија: "Желби", Поткатегорија: "Ресторани".
+          ИНСТРУКЦИИ:
+          1. Идентификувај го трговецот (пр. КАМ, ТИНЕКС, ВЕРО, МАКПЕТРОЛ, ЛУКОИЛ, СТОКОМАК, КИПЕР, ЗЕГИН).
+          2. Најди го вкупниот износ за плаќање (обично стои до "ВКУПНО" или "TOTAL").
+          3. Категоризирај го трошокот според овие понудени категории: ${JSON.stringify(customCategories)}.
+          
+          ЛОГИКА ЗА МАКЕДОНИЈА:
+          - Маркети (KAM, Tinex, Vero, Stokomak, Kipper, Ramstore) -> NEEDS / Храна и пијалоци.
+          - Аптеки (Zegin, Eurofarm) -> NEEDS / Здравје.
+          - Бензински (Makpetrol, Lukoil, Okta) -> NEEDS / Транспорт.
+          - Ресторани/Кафулиња (Пелистер, Distrikt, итн.) -> WANTS / Ресторани.
 
-          Извлечи:
-          1. Име на продавачот (Merchant Name).
-          2. Вкупен износ (Total Amount) - најди го текстот "ВКУПНО" или "TOTAL".
-          3. Соодветна категорија од понудениве: ${JSON.stringify(customCategories)}.
-          
           Врати го резултатот како чист JSON објект.`
         }
       ],
@@ -110,7 +110,7 @@ export const suggestBudget = async (income: number): Promise<AISuggestedBudget[]
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Врз основа на месечен приход од ${income} денари, предложи распределба на буџетот за одливи: Потреби, Желби, Итни случаи и Инвестиции.`,
+      contents: `Врз основа на месечен приход од ${income} денари, предложи распределба на буџетот за одливи: Потреби, Желби, Итни случаи и Инвестиции. Врати чист JSON.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -144,7 +144,7 @@ export const getFinancialAdvice = async (transactions: any[], budgets: any[]): P
       model: "gemini-3-flash-preview",
       contents: `Анализирај ги овие финансиски податоци и дај краток совет на македонски јазик за подобро менаџирање со одливите. Податоци: ${dataString}`,
       config: {
-        systemInstruction: "Ти си професионален финансиски советник од Македонија. Зборувај пријателски.",
+        systemInstruction: "Ти си професионален финансиски советник од Македонија. Зборувај пријателски и користи конкретни примери.",
         temperature: 0.7,
       }
     });
