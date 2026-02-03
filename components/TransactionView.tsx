@@ -1,0 +1,192 @@
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
+import { getTransactionIcon } from './Dashboard';
+import { analyzeReceiptImage } from '../services/geminiService';
+
+interface TransactionViewProps {
+  transactions: Transaction[];
+  onAddTransaction: (t: Transaction) => void;
+  categories: SubCategoryMap;
+  members: Member[];
+  currentMemberId: string;
+}
+
+const TransactionView: React.FC<TransactionViewProps> = ({ 
+  transactions, onAddTransaction, categories, members, currentMemberId 
+}) => {
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [subCategory, setSubCategory] = useState('');
+  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [selectedMainCat, setSelectedMainCat] = useState<string>('AI');
+  
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (selectedMainCat === 'AI') {
+      setSubCategory('');
+    } else {
+      const availableSubs = categories[selectedMainCat as MainCategory] || [];
+      if (availableSubs.length > 0) setSubCategory(availableSubs[0]);
+      else setSubCategory(selectedMainCat);
+    }
+  }, [selectedMainCat, categories]);
+
+  const openScanner = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setStream(s);
+      setIsScannerOpen(true);
+      if (videoRef.current) videoRef.current.srcObject = s;
+    } catch (err) {
+      alert("Нема пристап до камерата. Проверете ги дозволите.");
+    }
+  };
+
+  const closeScanner = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsScannerOpen(false);
+  };
+
+  const captureAndAnalyze = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    setIsAnalyzing(true);
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0);
+      const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+      
+      try {
+        const result = await analyzeReceiptImage(base64, categories);
+        setDescription(result.description);
+        setAmount(result.amount.toString());
+        setSelectedMainCat(result.mainCategory);
+        setSubCategory(result.subCategory);
+        closeScanner();
+      } catch (err) {
+        alert("Грешка при читање. Обидете се со подобра осветленост.");
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawAmount = parseFloat(amount.replace(/\D/g, ''));
+    if (!description || isNaN(rawAmount)) return;
+    
+    const isAi = selectedMainCat === 'AI';
+    const mainCat = isAi ? (type === 'income' ? MainCategory.INCOME : MainCategory.NEEDS) : (selectedMainCat as MainCategory);
+
+    onAddTransaction({
+      id: Math.random().toString(36).substr(2, 9),
+      date: new Date().toISOString(),
+      description,
+      amount: type === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount),
+      mainCategory: mainCat,
+      subCategory: isAi ? '✨ Размислувам...' : (subCategory || mainCat),
+      type: type,
+      isCategorizing: isAi,
+      memberId: currentMemberId
+    });
+    
+    setDescription(''); setAmount(''); setSelectedMainCat('AI');
+  };
+
+  return (
+    <div className="space-y-6 animate-fadeIn">
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl">
+            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="absolute inset-0 border-[30px] border-black/50 pointer-events-none">
+              <div className="w-full h-full border-2 border-dashed border-indigo-400/50 rounded-3xl animate-pulse"></div>
+            </div>
+            {isAnalyzing && (
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+                <div className="w-10 h-10 border-4 border-white border-t-indigo-500 rounded-full animate-spin mb-3"></div>
+                <p className="text-[10px] font-black uppercase tracking-widest">AI чита податоци...</p>
+              </div>
+            )}
+          </div>
+          <div className="p-8 flex gap-4 w-full max-w-md">
+            <button onClick={captureAndAnalyze} disabled={isAnalyzing} className="flex-grow py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg">Скенирај</button>
+            <button onClick={closeScanner} className="px-8 py-4 bg-slate-800 text-white rounded-2xl font-black uppercase text-xs">X</button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
+          <button onClick={openScanner} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[9px] uppercase tracking-widest border border-indigo-100">
+            <span>📷</span> Скенирај сметка
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex p-1 bg-slate-100 rounded-xl mb-2">
+            <button type="button" onClick={() => setType('expense')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'expense' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ОДЛИВ</button>
+            <button type="button" onClick={() => setType('income')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'income' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ПРИЛИВ</button>
+          </div>
+          
+          <div className="flex flex-col md:flex-row gap-3">
+            <input type="text" placeholder="Опис на трансакција" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-900 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-black text-slate-900" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none cursor-pointer" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
+              <option value="AI">✨ AI Автоматски</option>
+              {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+            <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none disabled:opacity-50" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
+              {selectedMainCat === 'AI' ? <option>Чекај AI...</option> : categories[selectedMainCat as MainCategory]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+            </select>
+          </div>
+
+          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-indigo-700 transition-all">Додади</button>
+        </form>
+      </div>
+
+      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-100">
+        {transactions.map(t => (
+          <div key={t.id} className="p-6 flex items-center justify-between group">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                {getTransactionIcon(t.subCategory, t.mainCategory)}
+              </div>
+              <div>
+                <p className="font-black text-slate-900 text-base">{t.description}</p>
+                <p className={`text-[9px] font-black uppercase tracking-widest ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
+                   {t.isCategorizing ? '✨ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
+                </p>
+              </div>
+            </div>
+            <div className={`text-sm font-black ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
+              {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default TransactionView;

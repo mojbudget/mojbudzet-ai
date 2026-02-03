@@ -1,0 +1,26 @@
+
+{
+  "short_name": "МојБуџет",
+  "name": "МојБуџет AI - Финансиски Асистент",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/583/583985.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/583/583985.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#4f46e5",
+  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "description": "Паметно управување со лични финансии во Македонија со помош на AI",
+  "lang": "mk",
+  "categories": ["finance", "productivity"]
+}
