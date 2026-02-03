@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout, { TabType } from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -11,17 +12,30 @@ import { INITIAL_TRANSACTIONS, INITIAL_BUDGETS, INITIAL_CATEGORIES as DefaultSub
 import { getFinancialAdvice, categorizeTransactionsBatch } from './services/geminiService';
 
 const App: React.FC = () => {
+  // Помошна функција за вчитување од localStorage
+  const getSavedData = <T,>(key: string, defaultValue: T): T => {
+    const saved = localStorage.getItem(key);
+    if (!saved) return defaultValue;
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      return defaultValue;
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [budgets, setBudgets] = useState<Budget[]>(INITIAL_BUDGETS);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
-  const [categories, setCategories] = useState<SubCategoryMap>(DefaultSubs);
-  const [aiAdvice, setAiAdvice] = useState<string>('');
-  const [isBankConnected, setIsBankConnected] = useState(false);
-  const [cardInfo, setCardInfo] = useState<CardInfo | null>(null);
-  const [householdName, setHouseholdName] = useState('Моето домаќинство');
   
+  // Иницијализација на состојбите со податоци од localStorage
+  const [transactions, setTransactions] = useState<Transaction[]>(() => getSavedData('transactions', INITIAL_TRANSACTIONS));
+  const [budgets, setBudgets] = useState<Budget[]>(() => getSavedData('budgets', INITIAL_BUDGETS));
+  const [reminders, setReminders] = useState<Reminder[]>(() => getSavedData('reminders', []));
+  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>(() => getSavedData('goals', []));
+  const [categories, setCategories] = useState<SubCategoryMap>(() => getSavedData('categories', DefaultSubs));
+  const [isBankConnected, setIsBankConnected] = useState(() => getSavedData('isBankConnected', false));
+  const [cardInfo, setCardInfo] = useState<CardInfo | null>(() => getSavedData('cardInfo', null));
+  const [householdName, setHouseholdName] = useState(() => getSavedData('householdName', 'Моето домаќинство'));
+  
+  const [aiAdvice, setAiAdvice] = useState<string>('');
   const [members] = useState<Member[]>([
     { id: '1', name: 'Петар', avatarColor: '#6366f1' },
     { id: '2', name: 'Марија', avatarColor: '#ec4899' }
@@ -33,6 +47,16 @@ const App: React.FC = () => {
 
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingQueueRef = useRef<{ id: string; description: string }[]>([]);
+
+  // Автоматско зачувување во localStorage при секоја промена
+  useEffect(() => { localStorage.setItem('transactions', JSON.stringify(transactions)); }, [transactions]);
+  useEffect(() => { localStorage.setItem('budgets', JSON.stringify(budgets)); }, [budgets]);
+  useEffect(() => { localStorage.setItem('reminders', JSON.stringify(reminders)); }, [reminders]);
+  useEffect(() => { localStorage.setItem('goals', JSON.stringify(financialGoals)); }, [financialGoals]);
+  useEffect(() => { localStorage.setItem('categories', JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('isBankConnected', JSON.stringify(isBankConnected)); }, [isBankConnected]);
+  useEffect(() => { localStorage.setItem('cardInfo', JSON.stringify(cardInfo)); }, [cardInfo]);
+  useEffect(() => { localStorage.setItem('householdName', JSON.stringify(householdName)); }, [householdName]);
 
   const pageTitles: Record<TabType, string> = {
     dashboard: 'Преглед',
@@ -199,6 +223,13 @@ const App: React.FC = () => {
     await Notification.requestPermission();
   };
 
+  const handleResetApp = () => {
+    if (window.confirm("Дали сте сигурни дека сакате да ги избришете СИТЕ податоци? Ова дејство е неповратно.")) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -221,18 +252,28 @@ const App: React.FC = () => {
         return <GoalsView goals={financialGoals} onAddGoal={handleAddGoal} onUpdateGoalProgress={handleUpdateGoalProgress} onDeleteGoal={(id: string) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />;
       case 'settings':
         return (
-          <SettingsView 
-            categories={categories} 
-            onUpdateCategories={setCategories} 
-            isBankConnected={isBankConnected}
-            onToggleBank={(status: boolean) => {
-              setIsBankConnected(status);
-              if (!status) setCardInfo(null);
-            }}
-            cardInfo={cardInfo}
-            onUpdateCardInfo={setCardInfo}
-            onSimulateTransaction={simulateBankTransaction}
-          />
+          <div className="space-y-12">
+            <SettingsView 
+              categories={categories} 
+              onUpdateCategories={setCategories} 
+              isBankConnected={isBankConnected}
+              onToggleBank={(status: boolean) => {
+                setIsBankConnected(status);
+                if (!status) setCardInfo(null);
+              }}
+              cardInfo={cardInfo}
+              onUpdateCardInfo={setCardInfo}
+              onSimulateTransaction={simulateBankTransaction}
+            />
+            <div className="pt-8 border-t border-slate-100 flex justify-center">
+              <button 
+                onClick={handleResetApp}
+                className="px-8 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-red-100 hover:bg-red-600 hover:text-white transition-all"
+              >
+                ⚠️ Целосен ресет на податоци
+              </button>
+            </div>
+          </div>
         );
       default: return null;
     }
