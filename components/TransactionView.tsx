@@ -3,19 +3,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
 import { analyzeReceiptImage } from '../services/geminiService';
-// Fix: Added missing IconTransactions to imports
-import { IconCamera, IconTransactions } from './Icons';
+import { IconCamera, IconTransactions, IconEdit } from './Icons';
 
 interface TransactionViewProps {
   transactions: Transaction[];
   onAddTransaction: (t: Transaction) => void;
+  onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
   categories: SubCategoryMap;
   members: Member[];
   currentMemberId: string;
 }
 
 const TransactionView: React.FC<TransactionViewProps> = ({ 
-  transactions, onAddTransaction, categories, members, currentMemberId 
+  transactions, onAddTransaction, onUpdateTransaction, categories, members, currentMemberId 
 }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -23,6 +23,11 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [selectedMainCat, setSelectedMainCat] = useState<string>('AI');
   
+  // States for editing
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editMainCat, setEditMainCat] = useState<MainCategory>(MainCategory.NEEDS);
+  const [editSubCat, setEditSubCat] = useState('');
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -55,6 +60,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
+    setIsScannerOpen(false);
   };
 
   const captureAndAnalyze = async () => {
@@ -109,10 +115,26 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     setDescription(''); setAmount(''); setSelectedMainCat('AI');
   };
 
+  const startEditing = (t: Transaction) => {
+    setEditingId(t.id);
+    setEditMainCat(t.mainCategory);
+    setEditSubCat(t.subCategory);
+  };
+
+  const saveEdit = () => {
+    if (editingId) {
+      onUpdateTransaction(editingId, {
+        mainCategory: editMainCat,
+        subCategory: editSubCat
+      });
+      setEditingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
           <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl">
             <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
@@ -167,24 +189,66 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-100">
-        {transactions.map(t => (
-          <div key={t.id} className="p-6 flex items-center justify-between group">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
-                {getTransactionIcon(t.subCategory, t.mainCategory)}
+        {transactions.map(t => {
+          const isEditing = editingId === t.id;
+
+          return (
+            <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4">
+              <div className="flex items-center gap-4 flex-grow">
+                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                  {getTransactionIcon(t.subCategory, t.mainCategory)}
+                </div>
+                <div className="flex-grow">
+                  <p className="font-black text-slate-900 text-base">{t.description}</p>
+                  
+                  {isEditing ? (
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                      <select 
+                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
+                        value={editMainCat}
+                        onChange={(e) => {
+                          const newMain = e.target.value as MainCategory;
+                          setEditMainCat(newMain);
+                          setEditSubCat(categories[newMain][0] || '');
+                        }}
+                      >
+                        {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                      <select 
+                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
+                        value={editSubCat}
+                        onChange={(e) => setEditSubCat(e.target.value)}
+                      >
+                        {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                      </select>
+                      <div className="flex gap-1">
+                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 uppercase px-2 py-1 bg-green-50 rounded">ОК</button>
+                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-red-400 uppercase px-2 py-1 bg-red-50 rounded">X</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
+                      {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
+                      {!t.isCategorizing && (
+                        <button 
+                          onClick={() => startEditing(t)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400 hover:text-indigo-600"
+                        >
+                          <IconEdit className="w-3 h-3" />
+                        </button>
+                      )}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="font-black text-slate-900 text-base">{t.description}</p>
-                <p className={`text-[9px] font-black uppercase tracking-widest ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
-                   {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
-                </p>
+              <div className="flex items-center justify-between md:justify-end gap-4">
+                <div className={`text-sm font-black whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
+                </div>
               </div>
             </div>
-            <div className={`text-sm font-black ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
-              {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {transactions.length === 0 && (
           <div className="text-center py-20 opacity-30">
              <IconTransactions className="w-12 h-12 mx-auto mb-4" />
