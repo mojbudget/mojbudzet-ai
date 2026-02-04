@@ -97,6 +97,10 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateTransaction = (id: string, updates: Partial<Transaction>) => {
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
   const totalIncomeForMonth = useMemo(() => transactions
     .filter(t => {
       const d = new Date(t.date);
@@ -190,7 +194,7 @@ const App: React.FC = () => {
       </header>
       
       {activeTab === 'dashboard' && <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={(m, y) => {setSelectedMonth(m); setSelectedYear(y);}} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />}
-      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
+      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
       {activeTab === 'budget' && <BudgetView budgets={budgets} onUpdateBudget={(cat, limit) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />}
       {activeTab === 'reminders' && <RemindersView reminders={reminders} onAddReminder={(r) => setReminders(prev => [...prev, r])} onTogglePaid={(id) => setReminders(prev => prev.map(r => r.id === id ? {...r, isPaid: !r.isPaid} : r))} onDeleteReminder={(id) => setReminders(prev => prev.filter(r => r.id !== id))} onRequestPermission={async () => {}} />}
       {activeTab === 'goals' && <GoalsView goals={financialGoals} onAddGoal={(g) => setFinancialGoals(prev => [...prev, g])} onUpdateGoalProgress={(id, amt) => setFinancialGoals(prev => prev.map(g => g.id === id ? {...g, currentAmount: g.currentAmount + amt} : g))} onDeleteGoal={(id) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />}
