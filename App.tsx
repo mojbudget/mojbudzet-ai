@@ -89,14 +89,21 @@ const App: React.FC = () => {
     const queueToProcess = [...pendingQueueRef.current];
     pendingQueueRef.current = [];
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
-    const results = await categorizeTransactionsBatch(queueToProcess, categories);
-    setTransactions(prev => prev.map(t => {
-      const result = results.find((res: AICategorizationResponse) => res.transactionId === t.id);
-      if (result) {
-        return { ...t, mainCategory: result.mainCategory, subCategory: result.subCategory, isCategorizing: false };
-      }
-      return t;
-    }));
+    
+    try {
+      const results = await categorizeTransactionsBatch(queueToProcess, categories);
+      setTransactions(prev => prev.map(t => {
+        const result = results.find((res: AICategorizationResponse) => res.transactionId === t.id);
+        if (result) {
+          return { ...t, mainCategory: result.mainCategory, subCategory: result.subCategory, isCategorizing: false };
+        }
+        return t;
+      }));
+    } catch (e) {
+      console.error("Batch error:", e);
+      // Ако згреши AI, тргни го статусот 'Размислувам'
+      setTransactions(prev => prev.map(t => ({ ...t, isCategorizing: false })));
+    }
   }, [categories]);
 
   const handleAddTransaction = (newTransaction: Transaction) => {
@@ -150,9 +157,12 @@ const App: React.FC = () => {
   }, [transactions, selectedMonth, selectedYear]);
 
   const refreshAdvice = useCallback(async () => {
-    if (transactions.length > 0) {
+    // Само ако има барем една трансакција која не е почетниот приход
+    if (transactions.length > 1) {
       const advice = await getFinancialAdvice(transactions, budgets);
       setAiAdvice(advice);
+    } else {
+      setAiAdvice("Внеси ги твоите први трошоци за да добиеш паметен совет.");
     }
   }, [transactions, budgets]);
 
