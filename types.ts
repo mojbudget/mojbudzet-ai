@@ -9,7 +9,6 @@ export enum MainCategory {
 
 export type SubCategoryMap = Record<MainCategory, string[]>;
 
-// Fix: Defined Member interface for multi-user household tracking
 export interface Member {
   id: string;
   name: string;
@@ -21,8 +20,8 @@ export interface CardInfo {
   expiry: string;
   bankName: string;
   type: 'VISA' | 'MASTERCARD' | 'MAESTRO';
-  skinUrl?: string; // URL или base64 од фотографијата на дизајнот
-  color?: string; // Алтернативна боја ако нема слика
+  skinUrl?: string;
+  color?: string;
 }
 
 export interface Transaction {
@@ -34,7 +33,6 @@ export interface Transaction {
   subCategory: string;
   type: 'expense' | 'income';
   isCategorizing?: boolean;
-  // Fix: Added optional memberId to track which household member made the transaction
   memberId?: string;
 }
 
