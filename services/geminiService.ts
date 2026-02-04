@@ -4,26 +4,22 @@ import { MainCategory, SubCategoryMap, AICategorizationResponse, AISuggestedBudg
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Клучна промена: СТРОГА ИНСТРУКЦИЈА ЗА СИСТЕМОТ
 const SYSTEM_INSTRUCTION = `Ти си врвен македонски финансиски експерт за класификација на трошоци. 
 Твојата единствена задача е да ги мапираш описите на трансакциите во правилни категории.
 
 СТРОГИ ПРАВИЛА (БЕЗ ИСКЛУЧОЦИ):
-1. КАТЕГОРИЈА "Желби" -> "Ресторани": Овде МОРА да одат:
-   - Сите пицерии (Pizza, Jakomo, Domino, Hot Slice, Enriko).
-   - Брза храна (7-ca, Sedmica, Burger King, KFC, Vili, Sendvic).
-   - Кафулиња и барови (Kafic, Bar, Coffee, Lounge).
-   - Достава на храна (Kliknijadi, Korpa, Food Delivery).
-   ЗАБРАНЕТО Е овие да одат во "Останато" или "Храна и пијалоци" (Потреби).
+1. КАТЕГОРИЈА "Потреби" (MainCategory.NEEDS):
+   - СИТЕ МЕСЕЧНИ СМЕТКИ: Струја (EVN), Вода (Vodovod), Парно (BEG, ESM), Интернет и ТВ (Telekom, A1, Neotel, Telekabel).
+   - СИТЕ СУПЕРМАРКЕТИ: Tinex, KAM, Vero, Ramstore, Zito, Kipper, Stokmak, Reptil.
+   - ТРАНСПОРТ: Makpetrol, Lukoil, Okta, Taxi, JSP.
+   - ЗДРАВЈЕ: Аптеки (Zegin, Eurofarm), болници, лаборатории.
 
-2. КАТЕГОРИЈА "Потреби" -> "Храна и пијалоци": Овде одат САМО супермаркети:
-   - Tinex, KAM, Vero, Ramstore, Zito, Kipper, Stokmak, Reptil.
+2. КАТЕГОРИЈА "Желби" (MainCategory.WANTS):
+   - РЕСТОРАНИ И БРЗА ХРАНА: Pizza (Jakomo, Domino, Hot Slice), Sedmica, Burger King, KFC, Vili.
+   - КАФУЛИЊА: Секое кафе или бар.
+   - ЗАБАВА И ШОПИНГ: Кино, гардероба (Zara, H&M), козметика, хоби.
 
-3. КАТЕГОРИЈА "Потреби" -> "Транспорт":
-   - Бензински (Makpetrol, Lukoil, Okta).
-   - Taxi, JSP, Картичка за автобус.
-
-4. ФОРМАТ: Враќај резултати исклучиво како валиден JSON. Користи ги имињата на категориите точно како што се дадени.
+3. ФОРМАТ: Враќај резултати исклучиво како валиден JSON. Користи ги имињата на категориите точно како што се дадени.
 ЈАЗИК: Секогаш користи македонски јазик.`;
 
 export const categorizeTransactionsBatch = async (
@@ -62,8 +58,8 @@ export const categorizeTransactionsBatch = async (
     console.error("Batch error:", error);
     return items.map(item => ({
       transactionId: item.id,
-      mainCategory: MainCategory.WANTS,
-      subCategory: 'Ресторани'
+      mainCategory: MainCategory.NEEDS,
+      subCategory: 'Сметки'
     }));
   }
 };
@@ -75,7 +71,7 @@ export const analyzeReceiptImage = async (base64Image: string, customCategories:
       contents: {
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-          { text: `Анализирај ја фискалната сметка и категоризирај според: ${JSON.stringify(customCategories)}. Биди строг за пица/ресторани!` }
+          { text: `Анализирај ја фискалната сметка и категоризирај според: ${JSON.stringify(customCategories)}. Сметките МОРА да бидат Потреби!` }
         ]
       },
       config: {
@@ -106,7 +102,7 @@ export const suggestBudget = async (income: number): Promise<AISuggestedBudget[]
       model: "gemini-3-flash-preview",
       contents: { parts: [{ text: `Предложи буџет за ${income} денари.` }] },
       config: {
-        systemInstruction: "Врати JSON низа од категории и износи.",
+        systemInstruction: "Врати JSON низа од категории и износи. Користи ги само: Потреби, Желби, Итни случаи, Инвестиции.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
