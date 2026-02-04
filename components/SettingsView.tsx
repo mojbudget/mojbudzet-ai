@@ -2,6 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MainCategory, SubCategoryMap, CardInfo } from '../types';
 import { getTransactionIcon } from './Dashboard';
+import { getFinancialAdvice } from '../services/geminiService';
+import { IconGlobe, IconBank, IconNFC, IconCamera, IconEdit, IconPlus } from './Icons';
 
 interface SettingsViewProps {
   categories: SubCategoryMap;
@@ -76,7 +78,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/png');
         
-        // Креираме објект за картичката
         const newInfo: CardInfo = {
           number: cardNumber || '**** **** **** 8824',
           expiry: expiry || '12/28',
@@ -129,9 +130,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn pb-24">
       <header className="text-center">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Конфигурација ⛭</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Конфигурација</h2>
         <p className="text-slate-500 font-medium italic mt-2">Менаџирај ги твоите картички и категории.</p>
       </header>
 
@@ -150,7 +151,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
               
               <div className="relative bg-slate-900 p-8 rounded-[2rem] text-white flex flex-col justify-between h-52 shadow-xl overflow-hidden">
-                {/* Background Skin */}
                 {cardInfo.skinUrl ? (
                   <div className="absolute inset-0 z-0">
                     <img src={cardInfo.skinUrl} className="w-full h-full object-cover opacity-60 mix-blend-overlay scale-110" alt="Card Design" />
@@ -164,7 +164,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="w-14 h-11 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg shadow-inner border border-white/20"></div>
                   <div className="flex flex-col items-end">
                     <p className="text-[10px] font-black tracking-[0.3em] opacity-80 uppercase">{cardInfo.type}</p>
-                    <div className="w-8 h-8 mt-2 opacity-60">((•))</div>
+                    <div className="w-8 h-8 mt-2 opacity-60">
+                      <IconNFC className="w-6 h-6" />
+                    </div>
                   </div>
                 </div>
 
@@ -183,7 +185,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 onClick={onSimulateTransaction}
                 className="p-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg flex items-center justify-center gap-2"
               >
-                <span>⚡</span> Симулирај ново плаќање
+                <span>✦</span> Симулирај ново плаќање
               </button>
               <button 
                 onClick={() => onToggleBank(false)}
@@ -198,8 +200,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             {linkingMethod === 'none' && (
               <div className="text-center py-10 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 space-y-8">
                 <div className="flex justify-center">
-                   <div className="w-20 h-20 bg-indigo-100 rounded-[2rem] flex items-center justify-center text-indigo-600 text-4xl shadow-inner">
-                      💳
+                   <div className="w-20 h-20 bg-indigo-100 rounded-[2rem] flex items-center justify-center text-indigo-600 shadow-inner">
+                      <IconBank className="w-10 h-10" />
                    </div>
                 </div>
                 <div>
@@ -211,16 +213,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 
                 <div className="grid grid-cols-1 gap-3 max-w-sm mx-auto w-full px-4">
                   {[
-                    { id: 'nfc', label: 'Поврзи преку NFC', sub: 'БРЗО И БЕЗБЕДНО', icon: '((•))' },
-                    { id: 'scan', label: 'Скенирај картичка', sub: 'ПРЕКУ ТВОЈАТА КАМЕРА', icon: '📸' },
-                    { id: 'manual', label: 'Внеси рачно', sub: 'КЛАСИЧЕН НАЧИН', icon: '✎' }
+                    { id: 'nfc', label: 'Поврзи преку NFC', sub: 'БРЗО И БЕЗБЕДНО', icon: <IconNFC /> },
+                    { id: 'scan', label: 'Скенирај картичка', sub: 'ПРЕКУ ТВОЈАТА КАМЕРА', icon: <IconCamera /> },
+                    { id: 'manual', label: 'Внеси рачно', sub: 'КЛАСИЧЕН НАЧИН', icon: <IconEdit /> }
                   ].map((method) => (
                     <button 
                       key={method.id}
                       onClick={() => setLinkingMethod(method.id as LinkingMethod)}
                       className="w-full p-4 flex items-center gap-4 bg-white border border-slate-100 rounded-3xl hover:border-indigo-200 hover:shadow-md transition-all group"
                     >
-                      <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 text-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors flex-shrink-0">
+                      <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors flex-shrink-0">
                         {method.icon}
                       </div>
                       <div className="text-left">
@@ -232,135 +234,35 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             )}
-
-            {/* Skin Capture / Сликање на дизајн */}
-            {linkingMethod === 'skin' && (
-              <div className="animate-fadeIn space-y-6 text-center">
-                <div className="space-y-2 mb-6">
-                  <h4 className="font-black text-xl text-slate-900">Пренеси го дизајнот</h4>
-                  <p className="text-slate-500 text-xs">Поставете ја предната страна на картичката за да го пренесеме ликот во апликацијата.</p>
-                </div>
-                <div className="relative w-full aspect-[1.6/1] bg-slate-900 rounded-3xl overflow-hidden border-4 border-indigo-600 shadow-2xl">
+            
+            {(linkingMethod === 'scan' || linkingMethod === 'skin') && (
+              <div className="flex flex-col items-center gap-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+                <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-inner">
                   <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                   <canvas ref={canvasRef} className="hidden" />
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-[85%] h-[75%] border-2 border-dashed border-white/50 rounded-2xl"></div>
-                  </div>
+                  <div className="absolute inset-0 border-2 border-dashed border-indigo-400/50 m-4 rounded-xl animate-pulse"></div>
                 </div>
-                <div className="flex flex-col gap-3">
-                  <button 
-                    onClick={captureSkin}
-                    className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition shadow-lg uppercase tracking-widest text-xs"
-                  >
-                    Зачувај го дизајнот
-                  </button>
-                  <button onClick={() => setLinkingMethod('none')} className="text-[10px] font-black uppercase text-slate-400">Прескокни</button>
+                <div className="flex gap-3 w-full">
+                  <button onClick={captureSkin} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest text-[10px] shadow-lg">Сними</button>
+                  <button onClick={() => setLinkingMethod('none')} className="px-6 py-4 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-[10px]">Откажи</button>
                 </div>
               </div>
             )}
 
-            {/* NFC Симулатор */}
-            {linkingMethod === 'nfc' && (
-              <div className="text-center py-12 space-y-8 animate-fadeIn">
-                <div className="relative w-32 h-32 mx-auto">
-                  <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-25"></div>
-                  <div className="relative bg-indigo-600 w-32 h-32 rounded-full flex items-center justify-center text-5xl shadow-2xl">
-                    📳
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-black text-xl text-slate-900">Допри ја картичката</h4>
-                  <p className="text-slate-500 text-sm">Допри ја задната страна на твојата картичка до NFC чипот на телефонот.</p>
-                </div>
-                <button 
-                  onClick={() => setLinkingMethod('skin')}
-                  disabled={isProcessing}
-                  className="px-10 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition uppercase tracking-widest text-xs"
-                >
-                  {isProcessing ? 'Се чита...' : 'Симулирај допир'}
-                </button>
-                <button onClick={() => setLinkingMethod('none')} className="block mx-auto text-[10px] font-black uppercase text-slate-400">Откажи</button>
-              </div>
-            )}
-
-            {/* Camera Scan / Скенирање */}
-            {linkingMethod === 'scan' && (
-              <div className="animate-fadeIn space-y-6">
-                <div className="relative w-full aspect-[1.6/1] bg-slate-900 rounded-3xl overflow-hidden border-4 border-indigo-600 shadow-2xl">
-                  <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none">
-                    <div className="w-full h-full border-2 border-indigo-400/50 rounded-lg relative">
-                      <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-lg"></div>
-                      <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-lg"></div>
-                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-lg"></div>
-                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-lg"></div>
-                    </div>
-                  </div>
-                  <div className="absolute bottom-4 left-0 right-0 text-center">
-                    <span className="bg-white/90 text-slate-900 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">Држете ја картичката во рамката</span>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <button 
-                    onClick={() => setLinkingMethod('skin')}
-                    disabled={isProcessing}
-                    className="flex-grow py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition shadow-lg uppercase tracking-widest text-xs"
-                  >
-                    {isProcessing ? 'Се обработува...' : 'Скенирај сега'}
-                  </button>
-                  <button onClick={() => setLinkingMethod('none')} className="px-8 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs">Откажи</button>
-                </div>
-              </div>
-            )}
-
-            {/* Рачно внесување */}
             {linkingMethod === 'manual' && (
-              <div className="animate-fadeIn space-y-6">
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Број на картичка</label>
-                    <input 
-                      type="text" 
-                      placeholder="XXXX XXXX XXXX XXXX" 
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-mono text-lg tracking-widest"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                      maxLength={19}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Истекува на (MM/YY)</label>
-                      <input 
-                        type="text" 
-                        placeholder="MM / YY" 
-                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-mono"
-                        value={expiry}
-                        onChange={(e) => setExpiry(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">CVV / CVC</label>
-                      <input 
-                        type="password" 
-                        placeholder="***" 
-                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-mono"
-                        value={cvv}
-                        onChange={(e) => setCvv(e.target.value)}
-                        maxLength={3}
-                      />
-                    </div>
-                  </div>
+              <div className="space-y-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+                <input 
+                  type="text" placeholder="Број на картичка" 
+                  className="w-full p-4 bg-white border border-slate-100 rounded-2xl outline-none font-mono" 
+                  value={cardNumber} onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                />
+                <div className="flex gap-3">
+                  <input type="text" placeholder="ММ/ГГ" className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl outline-none" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                  <input type="text" placeholder="CVV" className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl outline-none" value={cvv} onChange={(e) => setCvv(e.target.value)} />
                 </div>
-                <div className="flex gap-4">
-                  <button 
-                    onClick={() => setLinkingMethod('skin')}
-                    disabled={isProcessing || cardNumber.length < 19}
-                    className="flex-grow py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition shadow-lg uppercase tracking-widest text-xs disabled:opacity-30"
-                  >
-                    Потврди и продолжи
-                  </button>
-                  <button onClick={() => setLinkingMethod('none')} className="px-8 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs">Откажи</button>
+                <div className="flex gap-3">
+                  <button onClick={handleFinishLinking} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest text-[10px] shadow-lg">Потврди</button>
+                  <button onClick={() => setLinkingMethod('none')} className="px-6 py-4 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-[10px]">Откажи</button>
                 </div>
               </div>
             )}
@@ -386,9 +288,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           />
           <button 
             onClick={addSub}
-            className="px-8 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+            className="px-8 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 flex items-center gap-2"
           >
-            Додади
+            <IconPlus className="w-4 h-4" /> Додади
           </button>
         </div>
 
