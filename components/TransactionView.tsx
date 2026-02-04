@@ -232,9 +232,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                       {!t.isCategorizing && (
                         <button 
                           onClick={() => startEditing(t)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400 hover:text-indigo-600"
+                          className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all ml-1"
+                          title="Промени категорија"
                         >
-                          <IconEdit className="w-3 h-3" />
+                          <IconEdit className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </p>
