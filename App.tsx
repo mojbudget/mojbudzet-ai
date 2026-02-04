@@ -134,24 +134,24 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 font-sans">
         <div className="max-w-md w-full animate-fadeIn text-center">
-          <div className="w-16 h-16 bg-indigo-600 rounded-3xl mx-auto mb-8 flex items-center justify-center text-white shadow-xl">
-            <span className="text-2xl font-bold">M</span>
+          <div className="px-8 py-4 bg-indigo-600 rounded-[2rem] mx-auto mb-10 inline-flex items-center justify-center text-white shadow-2xl shadow-indigo-200">
+            <span className="text-2xl font-black tracking-tighter uppercase">Мој Буџет</span>
           </div>
           {onboardingStep === 1 ? (
             <div className="space-y-6">
-              <h2 className="text-3xl font-black text-slate-900">Добредојде!</h2>
+              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде!</h2>
               <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход.</p>
               <input 
                 type="text" 
                 placeholder="пр: 45.000" 
-                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-black text-2xl text-center text-indigo-600"
+                className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none focus:border-indigo-500 font-black text-3xl text-center text-indigo-600 transition-all"
                 value={tempIncome.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
                 onChange={(e) => setTempIncome(e.target.value.replace(/\D/g, ''))}
               />
               <button 
                 disabled={!tempIncome}
                 onClick={() => setOnboardingStep(2)}
-                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs disabled:opacity-30"
+                className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-widest text-xs disabled:opacity-30 hover:bg-slate-800 transition-all shadow-lg"
               >
                 Продолжи
               </button>
@@ -159,20 +159,22 @@ const App: React.FC = () => {
           ) : (
             <div className="space-y-6">
               <h2 className="text-3xl font-black text-slate-900">Паметен Буџет</h2>
-              <p className="text-slate-500 font-medium">Дали сакаш AI да ти предложи распределба на твоите денари?</p>
-              <button 
-                disabled={isGeneratingBudget}
-                onClick={() => completeOnboarding(true)}
-                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 shadow-xl transition-all"
-              >
-                {isGeneratingBudget ? '✨ Се генерира...' : '✨ Да, предложи ми AI Буџет'}
-              </button>
-              <button 
-                onClick={() => completeOnboarding(false)}
-                className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px]"
-              >
-                Не, ќе внесам рачно подоцна
-              </button>
+              <p className="text-slate-500 font-medium leading-relaxed">Дали сакаш AI да ти предложи идеална распределба на твоите средства?</p>
+              <div className="space-y-3">
+                <button 
+                  disabled={isGeneratingBudget}
+                  onClick={() => completeOnboarding(true)}
+                  className="w-full py-6 bg-indigo-600 text-white rounded-[1.5rem] font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all transform hover:scale-[1.02]"
+                >
+                  {isGeneratingBudget ? '✨ Се генерира...' : '✨ Да, предложи ми AI Буџет'}
+                </button>
+                <button 
+                  onClick={() => completeOnboarding(false)}
+                  className="w-full py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-[1.5rem] font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all"
+                >
+                  Не, ќе внесам рачно подоцна
+                </button>
+              </div>
             </div>
           )}
         </div>
