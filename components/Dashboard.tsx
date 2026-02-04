@@ -28,19 +28,21 @@ export const getTransactionIcon = (subCat: string, mainCat: MainCategory, sizeCl
   if (s.includes('плата') || s.includes('бонус') || s.includes('приход')) {
     return <IconSalary className={indigoClass} />;
   }
-  if (s.includes('маркет') || s.includes('храна')) {
+  // Подобрена проверка за храна и супермаркети
+  if (s.includes('маркет') || s.includes('храна') || s.includes('намирници') || s.includes('тинекс') || s.includes('кам')) {
     return <IconFood className={indigoClass} />;
   }
-  if (s.includes('бензин') || s.includes('транспорт')) {
+  if (s.includes('бензин') || s.includes('транспорт') || s.includes('автобус') || s.includes('такси')) {
     return <IconTransport className={indigoClass} />;
   }
-  if (s.includes('здравје') || s.includes('аптека')) {
+  if (s.includes('здравје') || s.includes('аптека') || s.includes('лекар')) {
     return <IconMedical className={indigoClass} />;
   }
-  if (s.includes('ресторан') || s.includes('кафе') || s.includes('пица')) {
+  // Експлицитна проверка за ресторани и пица
+  if (s.includes('ресторан') || s.includes('кафе') || s.includes('пица') || s.includes('бургер') || s.includes('јадење')) {
     return <IconDining className={indigoClass} />;
   }
-  if (s.includes('забава') || s.includes('шопинг') || s.includes('филм')) {
+  if (s.includes('забава') || s.includes('шопинг') || s.includes('филм') || s.includes('хоби')) {
     return <IconEntertainment className={indigoClass} />;
   }
 
@@ -191,7 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
           <span>✦</span> AI Финансиски Совет
         </p>
-        <p className="text-sm text-indigo-900 font-medium leading-relaxed italic">{aiAdvice || "Ги анализирам твоите податоци..."}</p>
+        <p className="text-sm text-indigo-900 font-medium leading-relaxed italic">{aiAdvice || "Внеси податоци за да добиеш совет..."}</p>
       </div>
     </div>
   );
