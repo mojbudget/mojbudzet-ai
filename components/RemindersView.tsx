@@ -1,6 +1,8 @@
 
 import React, { useState } from 'react';
 import { Reminder } from '../types';
+// Fix: Replaced missing IconBill with IconBudget
+import { IconBudget, IconBank, IconEntertainment, IconTransport } from './Icons';
 
 interface RemindersViewProps {
   reminders: Reminder[];
@@ -33,7 +35,6 @@ const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onAddReminder,
     const rawAmount = parseFloat(amount);
     if (!title || isNaN(rawAmount) || !date) return;
     
-    // Побарај дозвола за нотификации при секое зачувување ако веќе не е одобрено
     if ("Notification" in window && Notification.permission !== "granted") {
       await onRequestPermission();
     }
@@ -55,12 +56,14 @@ const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onAddReminder,
   };
 
   const getIcon = (type: Reminder['type']) => {
+    const indigoClass = "w-7 h-7 text-indigo-600";
     switch(type) {
-      case 'bill': return '◴';
-      case 'credit': return '🏦';
-      case 'subscription': return '▣';
-      case 'vehicle': return '🚗';
-      default: return '◈';
+      // Fix: Used IconBudget instead of IconBill
+      case 'bill': return <IconBudget className={indigoClass} />;
+      case 'credit': return <IconBank className={indigoClass} />;
+      case 'subscription': return <IconEntertainment className={indigoClass} />;
+      case 'vehicle': return <IconTransport className={indigoClass} />;
+      default: return <IconBudget className={indigoClass} />;
     }
   };
 
@@ -74,7 +77,7 @@ const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onAddReminder,
   return (
     <div className="space-y-8 animate-fadeIn pb-20">
       <header className="flex flex-col items-center justify-center text-center">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Твоите обврски ◴</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Твоите обврски</h2>
         <p className="text-slate-500 font-medium italic mt-2">Никогаш не заборавај на твоите сметки и обврски.</p>
       </header>
 
@@ -146,7 +149,7 @@ const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onAddReminder,
           <div key={r.id} className={`p-6 rounded-[2.5rem] border transition-all relative overflow-hidden group ${r.isPaid ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-100 shadow-sm'}`}>
             <div className="flex justify-between items-start relative z-10">
               <div className="flex gap-4">
-                <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
                   {getIcon(r.type)}
                 </div>
                 <div>
@@ -154,7 +157,7 @@ const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onAddReminder,
                   <div className="flex flex-col gap-0.5">
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">Рок: {new Date(r.dueDate).toLocaleDateString('mk-MK')}</p>
                     {!r.isPaid && (
-                      <p className="text-[9px] text-indigo-400 font-bold flex items-center gap-1">
+                      <p className="text-[9px] text-indigo-400 font-bold flex items-center gap-1 mt-1">
                         <span>🔔</span> {getNotificationLabel(r.notificationDaysBefore)}
                       </p>
                     )}
