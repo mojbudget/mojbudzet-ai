@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
 import { analyzeReceiptImage } from '../services/geminiService';
+// Fix: Added missing IconTransactions to imports
+import { IconCamera, IconTransactions } from './Icons';
 
 interface TransactionViewProps {
   transactions: Transaction[];
@@ -53,7 +55,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
-    setIsScannerOpen(false);
   };
 
   const captureAndAnalyze = async () => {
@@ -136,7 +137,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
           <button onClick={openScanner} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[9px] uppercase tracking-widest border border-indigo-100">
-            <span>📷</span> Скенирај сметка
+            <IconCamera className="w-3 h-3" /> Скенирај сметка
           </button>
         </div>
 
@@ -153,7 +154,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none cursor-pointer" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
-              <option value="AI">✨ AI Автоматски</option>
+              <option value="AI">✦ AI Автоматски</option>
               {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
             <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none disabled:opacity-50" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
@@ -175,7 +176,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
               <div>
                 <p className="font-black text-slate-900 text-base">{t.description}</p>
                 <p className={`text-[9px] font-black uppercase tracking-widest ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
-                   {t.isCategorizing ? '✨ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
+                   {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
                 </p>
               </div>
             </div>
@@ -184,6 +185,12 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             </div>
           </div>
         ))}
+        {transactions.length === 0 && (
+          <div className="text-center py-20 opacity-30">
+             <IconTransactions className="w-12 h-12 mx-auto mb-4" />
+             <p className="text-[10px] font-black uppercase tracking-widest">Нема трансакции</p>
+          </div>
+        )}
       </div>
     </div>
   );
