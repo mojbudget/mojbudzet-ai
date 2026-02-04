@@ -2,31 +2,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MainCategory, SubCategoryMap, AICategorizationResponse, AISuggestedBudget, FinancialGoal } from "../types";
 
-// Always use the process.env.API_KEY directly as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Директно користење на клучот според упатствата
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const categorizeTransactionsBatch = async (
   items: { id: string; description: string }[], 
   customCategories?: SubCategoryMap
 ): Promise<AICategorizationResponse[]> => {
-  const schemaStr = customCategories ? JSON.stringify(customCategories) : "Use common Sense";
+  const schemaStr = customCategories ? JSON.stringify(customCategories) : "Use common sense financial grouping";
   
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: {
-        parts: [{
-          text: `Ти си финансиски експерт. Категоризирај ги овие трансакции: ${JSON.stringify(items)}. 
-          Користи ги овие категории: ${schemaStr}.
-          
-          ВАЖНИ ПРАВИЛА:
-          1. Оброци купени надвор (Пица, Бургер, Сендвич, Кафе, Достава, Ресторан) МОРА да одат во "Желби" под "Ресторани", освен ако описот не е име на супермаркет (Тинекс, КАМ).
-          2. Ако описот е име на супермаркет, оди во "Потреби" -> "Храна и пијалоци".
-          3. Плаќања за услуги како Netflix, Spotify, iCloud одат во "Желби" -> "Забава" или "Шопинг".
-          
-          Врати само чист JSON.`
-        }]
-      },
+      contents: `Ти си македонски финансиски експерт. Категоризирај ги следните трансакции: ${JSON.stringify(items)}. 
+      
+      ЛИСТА НА ДОЗВОЛЕНИ КАТЕГОРИИ:
+      ${schemaStr}
+      
+      СТРОГИ ПРАВИЛА:
+      1. Сѐ што е купено во ресторан, пицерија, кафе бар (пр: Пица, Бургер, Кафе, Достава на храна) МОРА да биде во "Желби" -> "Ресторани".
+      2. Сѐ што е купено во супермаркет (пр: Тинекс, КАМ, Веро, Рамстор) ОДИ во "Потреби" -> "Храна и пијалоци".
+      3. Плаќања за гориво или автобус одат во "Потреби" -> "Транспорт".
+      
+      Врати го одговорот исклучиво како JSON низа од објекти со 'transactionId', 'mainCategory' и 'subCategory'.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -48,10 +46,11 @@ export const categorizeTransactionsBatch = async (
     return JSON.parse(text.trim());
   } catch (error) {
     console.error("Error in batch categorization:", error);
+    // Враќање на почетната состојба наместо 'Останато' за да не се изгуби контекстот при грешка
     return items.map(item => ({
       transactionId: item.id,
       mainCategory: MainCategory.NEEDS,
-      subCategory: 'Останато'
+      subCategory: 'Проверка...'
     }));
   }
 };
@@ -60,15 +59,10 @@ export const analyzeReceiptImage = async (base64Image: string, customCategories:
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-          {
-            text: `Ти си експерт за македонски сметки. Најди трговец, вкупен износ и категорија од: ${JSON.stringify(customCategories)}. 
-            ПРАВИЛО: Храна надвор (Pizza, Burger) -> Желби/Ресторани. Врати чист JSON.`
-          }
-        ]
-      },
+      contents: [
+        { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+        { text: `Анализирај ја оваа македонска фискална сметка. Извлечи: трговец (description), вкупен износ (amount) и категоризирај според: ${JSON.stringify(customCategories)}. Врати само JSON.` }
+      ],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -94,11 +88,7 @@ export const suggestBudget = async (income: number): Promise<AISuggestedBudget[]
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: {
-        parts: [{
-          text: `Врз основа на месечен приход од ${income} денари, предложи 50/30/20 распределба: Потреби (50%), Желби (30%), Инвестиции/Штедење (20%). Врати чист JSON.`
-        }]
-      },
+      contents: `Предложи 50/30/20 буџет за приход од ${income} денари. Врати само JSON.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -123,22 +113,21 @@ export const suggestBudget = async (income: number): Promise<AISuggestedBudget[]
 };
 
 export const getFinancialAdvice = async (transactions: any[], budgets: any[]): Promise<string> => {
+  if (transactions.length === 0) return "Внеси ги твоите први трансакции за да добиеш совет.";
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: {
-        parts: [{
-          text: `Анализирај и дај краток македонски совет: ${JSON.stringify({ transactions, budgets })}`
-        }]
-      },
+      contents: `Како македонски финансиски советник, дај еден краток и корисен совет за овие податоци: ${JSON.stringify({ transactions, budgets })}`,
       config: { 
-        systemInstruction: "Ти си македонски финансиски советник.", 
+        systemInstruction: "Биди концизен, мотивирачки и зборувај на македонски јазик.", 
         temperature: 0.7 
       }
     });
-    return response.text || "Нема совет.";
+    return response.text || "Продолжи со паметното менаџирање на буџетот!";
   } catch (error) {
-    return "Грешка.";
+    console.error("Advice error:", error);
+    return "Моментално не можам да генерирам совет. Пробај подоцна.";
   }
 };
 
@@ -146,18 +135,14 @@ export const getGoalStrategy = async (goal: FinancialGoal, monthlyIncome: number
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: {
-        parts: [{
-          text: `Стратегија за штедење: ${JSON.stringify({goal, monthlyIncome, monthlyExpenses})}`
-        }]
-      },
+      contents: `Направи конкретна стратегија за штедење за целта: ${JSON.stringify(goal)}. Приход: ${monthlyIncome}, Трошоци: ${monthlyExpenses}.`,
       config: { 
-        systemInstruction: "Биди прецизен.", 
+        systemInstruction: "Биди прецизен и дај реални чекори на македонски јазик.", 
         temperature: 0.8 
       }
     });
-    return response.text || "Грешка.";
+    return response.text || "Постави помал месечен лимит за да заштедиш побрзо.";
   } catch (error) {
-    return "Грешка.";
+    return "Грешка при генерирање на стратегија.";
   }
 };
