@@ -3,6 +3,10 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts';
 import { Transaction, Budget, MainCategory } from '../types';
 import AdComponent from './AdComponent';
+import { 
+  IconFood, IconDining, IconTransport, IconMedical, 
+  IconSalary, IconEntertainment, IconDefault 
+} from './Icons';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -17,27 +21,30 @@ interface DashboardProps {
   isBankConnected: boolean;
 }
 
-export const getTransactionIcon = (subCat: string, mainCat: MainCategory, sizeClass: string = "w-6 h-6") => {
+export const getTransactionIcon = (subCat: string, mainCat: MainCategory, sizeClass: string = "w-5 h-5") => {
   const s = subCat.toLowerCase();
-  const colorClass = "stroke-indigo-600";
+  const indigoClass = `${sizeClass} text-indigo-600 stroke-indigo-600`;
   
   if (s.includes('плата') || s.includes('бонус') || s.includes('приход')) {
-    return <span className="text-xl">💰</span>;
+    return <IconSalary className={indigoClass} />;
   }
   if (s.includes('маркет') || s.includes('храна')) {
-    return <span className="text-xl">🛒</span>;
+    return <IconFood className={indigoClass} />;
   }
   if (s.includes('бензин') || s.includes('транспорт')) {
-    return <span className="text-xl">⛽</span>;
+    return <IconTransport className={indigoClass} />;
   }
   if (s.includes('здравје') || s.includes('аптека')) {
-    return <span className="text-xl">💊</span>;
+    return <IconMedical className={indigoClass} />;
   }
-  if (s.includes('ресторан') || s.includes('кафе')) {
-    return <span className="text-xl">☕</span>;
+  if (s.includes('ресторан') || s.includes('кафе') || s.includes('пица')) {
+    return <IconDining className={indigoClass} />;
+  }
+  if (s.includes('забава') || s.includes('шопинг') || s.includes('филм')) {
+    return <IconEntertainment className={indigoClass} />;
   }
 
-  return <span className="text-xl">📦</span>;
+  return <IconDefault className={indigoClass} />;
 };
 
 const renderActiveShape = (props: any) => {
@@ -180,7 +187,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         </section>
       </div>
       
-      <AdComponent slot="0987654321" format="rectangle" />
+      <div className="bg-indigo-50 p-6 rounded-[2.5rem] border border-indigo-100">
+        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+          <span>✦</span> AI Финансиски Совет
+        </p>
+        <p className="text-sm text-indigo-900 font-medium leading-relaxed italic">{aiAdvice || "Ги анализирам твоите податоци..."}</p>
+      </div>
     </div>
   );
 };
