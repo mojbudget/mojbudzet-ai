@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { IconDashboard, IconTransactions, IconBudget, IconGoals, IconReminders, IconSettings } from './Icons';
 
 export type TabType = 'dashboard' | 'transactions' | 'budget' | 'reminders' | 'goals' | 'settings';
 
@@ -11,22 +12,21 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isBankConnected }) => {
-  const menuItems: { id: TabType; label: string; icon: string }[] = [
-    { id: 'dashboard', label: 'Преглед', icon: '⌂' },
-    { id: 'transactions', label: 'Трансакции', icon: '⇄' },
-    { id: 'budget', label: 'Буџетирање', icon: '％' },
-    { id: 'goals', label: 'Цели', icon: '⦿' },
-    { id: 'reminders', label: 'Потсетници', icon: '◴' },
-    { id: 'settings', label: 'Подесувања', icon: '⛭' },
+  const menuItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard', label: 'Преглед', icon: <IconDashboard /> },
+    { id: 'transactions', label: 'Трансакции', icon: <IconTransactions /> },
+    { id: 'budget', label: 'Буџетирање', icon: <IconBudget /> },
+    { id: 'goals', label: 'Цели', icon: <IconGoals /> },
+    { id: 'reminders', label: 'Потсетници', icon: <IconReminders /> },
+    { id: 'settings', label: 'Подесувања', icon: <IconSettings /> },
   ];
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-white">
-      {/* Minimalist Sidebar / Top Bar */}
       <nav className="bg-slate-50 border-r border-slate-100 text-slate-900 w-full md:w-20 lg:w-24 flex-shrink-0 flex md:flex-col shadow-sm z-20">
         <div className="hidden md:flex p-6 justify-center">
-          <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-100">
-            🪙
+          <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+            <IconBudget className="w-6 h-6" />
           </div>
         </div>
         
@@ -42,7 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isBa
                   : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <span className="text-2xl font-bold tracking-tighter leading-none">{item.icon}</span>
+              {item.icon}
               {activeTab === item.id && (
                 <div className="hidden md:block absolute -right-4 w-1 h-6 bg-indigo-600 rounded-full"></div>
               )}
@@ -55,7 +55,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isBa
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="flex-grow p-4 md:p-10 overflow-y-auto w-full">
         <div className="max-w-5xl mx-auto">
           {children}
