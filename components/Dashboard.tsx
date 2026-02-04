@@ -21,31 +21,23 @@ interface DashboardProps {
   isBankConnected: boolean;
 }
 
+const CATEGORY_COLORS: Record<string, string> = {
+  [MainCategory.NEEDS]: '#6366f1', // Indigo
+  [MainCategory.WANTS]: '#f59e0b', // Amber
+  [MainCategory.EMERGENCIES]: '#ef4444', // Red
+  [MainCategory.INVESTMENTS]: '#10b981', // Emerald
+};
+
 export const getTransactionIcon = (subCat: string, mainCat: MainCategory, sizeClass: string = "w-5 h-5") => {
   const s = subCat.toLowerCase();
   const indigoClass = `${sizeClass} text-indigo-600 stroke-indigo-600`;
   
-  if (s.includes('плата') || s.includes('бонус') || s.includes('приход')) {
-    return <IconSalary className={indigoClass} />;
-  }
-  // Подобрена проверка за храна и супермаркети
-  if (s.includes('маркет') || s.includes('храна') || s.includes('намирници') || s.includes('тинекс') || s.includes('кам')) {
-    return <IconFood className={indigoClass} />;
-  }
-  if (s.includes('бензин') || s.includes('транспорт') || s.includes('автобус') || s.includes('такси')) {
-    return <IconTransport className={indigoClass} />;
-  }
-  if (s.includes('здравје') || s.includes('аптека') || s.includes('лекар')) {
-    return <IconMedical className={indigoClass} />;
-  }
-  // Експлицитна проверка за ресторани и пица
-  if (s.includes('ресторан') || s.includes('кафе') || s.includes('пица') || s.includes('бургер') || s.includes('јадење')) {
-    return <IconDining className={indigoClass} />;
-  }
-  if (s.includes('забава') || s.includes('шопинг') || s.includes('филм') || s.includes('хоби')) {
-    return <IconEntertainment className={indigoClass} />;
-  }
-
+  if (s.includes('плата') || s.includes('бонус') || s.includes('приход')) return <IconSalary className={indigoClass} />;
+  if (s.includes('маркет') || s.includes('храна') || s.includes('сметка') || s.includes('струја') || s.includes('вода')) return <IconFood className={indigoClass} />;
+  if (s.includes('бензин') || s.includes('транспорт') || s.includes('автобус') || s.includes('такси')) return <IconTransport className={indigoClass} />;
+  if (s.includes('здравје') || s.includes('аптека') || s.includes('лекар')) return <IconMedical className={indigoClass} />;
+  if (s.includes('ресторан') || s.includes('кафе') || s.includes('пица')) return <IconDining className={indigoClass} />;
+  if (s.includes('забава') || s.includes('шопинг') || s.includes('хоби')) return <IconEntertainment className={indigoClass} />;
   return <IconDefault className={indigoClass} />;
 };
 
@@ -86,14 +78,27 @@ const Dashboard: React.FC<DashboardProps> = ({
     filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
       totals[t.mainCategory] = (totals[t.mainCategory] || 0) + Math.abs(t.amount);
     });
-    return Object.entries(totals).map(([name, value]) => ({ name, value }));
+
+    const categoryOrder = [MainCategory.NEEDS, MainCategory.WANTS, MainCategory.EMERGENCIES, MainCategory.INVESTMENTS];
+    return categoryOrder
+      .filter(cat => totals[cat] !== undefined)
+      .map(name => ({
+        name,
+        value: totals[name],
+        fill: CATEGORY_COLORS[name] || '#cbd5e1'
+      }));
   }, [filteredTransactions]);
 
-  const COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#10b981'];
+  const activeCategory = activeIndex >= 0 ? pieData[activeIndex] : null;
+
+  const activeCategoryTransactions = useMemo(() => {
+    if (!activeCategory) return filteredTransactions.slice(0, 10);
+    return filteredTransactions.filter(t => t.mainCategory === activeCategory.name);
+  }, [activeCategory, filteredTransactions]);
 
   return (
     <div className="px-2 space-y-6 animate-fadeIn pb-12">
-      <section className="flex flex-col items-center justify-center pt-2">
+      <section className="flex flex-col items-center justify-center pt-2 relative">
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -115,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
         
         <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-8 rounded-[2.5rem] shadow-xl shadow-indigo-200 flex flex-col items-center text-center transform md:scale-110 z-10 border-4 border-white">
-          <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Моментален Биланс</p>
+          <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Биланс</p>
           <p className="text-3xl font-black text-white drop-shadow-md">{stats.currentBalance.toLocaleString('mk-MK')} <span className="text-sm">ден.</span></p>
         </div>
 
@@ -134,37 +139,54 @@ const Dashboard: React.FC<DashboardProps> = ({
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <section className="h-80 relative flex items-center justify-center bg-white rounded-[3rem] border border-slate-50 shadow-sm">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie 
-                {...({ activeIndex, activeShape: renderActiveShape } as any)}
-                data={pieData} 
-                cx="50%" cy="50%" innerRadius={75} outerRadius={100} paddingAngle={8} dataKey="value" stroke="none"
-                onClick={(_, index) => setActiveIndex(activeIndex === index ? -1 : index)}
-              >
-                {pieData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className="cursor-pointer transition-all" />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Трошоци</p>
-            <p className="text-2xl font-black text-slate-900">
-              {stats.expenses.toLocaleString('mk-MK')}
-            </p>
-            <p className="text-[10px] font-bold text-slate-400">ден.</p>
+        <section className="space-y-4">
+          <div className="h-80 relative flex items-center justify-center bg-white rounded-[3rem] border border-slate-50 shadow-sm overflow-hidden">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie 
+                  {...({ activeIndex, activeShape: renderActiveShape } as any)}
+                  data={pieData} 
+                  cx="50%" cy="50%" innerRadius={75} outerRadius={100} paddingAngle={8} dataKey="value" stroke="none"
+                  onMouseEnter={(_, index) => setActiveIndex(index)}
+                  onMouseLeave={() => setActiveIndex(-1)}
+                  onClick={(_, index) => setActiveIndex(activeIndex === index ? -1 : index)}
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} className="cursor-pointer transition-all duration-300 outline-none" />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-6">
+              <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5 truncate w-full">
+                {activeCategory ? activeCategory.name : 'Трошоци'}
+              </p>
+              <p className="text-2xl font-black text-slate-900 leading-tight">
+                {(activeCategory ? activeCategory.value : stats.expenses).toLocaleString('mk-MK')}
+              </p>
+              <p className="text-[10px] font-bold text-slate-400">ден.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+            {Object.entries(CATEGORY_COLORS).map(([name, color]) => (
+              <div key={name} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">{name}</span>
+              </div>
+            ))}
           </div>
         </section>
 
         <section className="space-y-3">
           <div className="flex justify-between items-center px-4">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Последни движења</h3>
-            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{filteredTransactions.length} вкупно</span>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              {activeCategory ? `Листа за: ${activeCategory.name}` : 'Последни движења'}
+            </h3>
+            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{activeCategoryTransactions.length} вкупно</span>
           </div>
           <div className="space-y-2 max-h-[400px] overflow-y-auto no-scrollbar pr-1">
-            {filteredTransactions.slice(0, 10).map(t => (
+            {activeCategoryTransactions.map(t => (
               <div key={t.id} className="flex items-center justify-between p-4 bg-white rounded-3xl border border-slate-100 group shadow-sm hover:border-indigo-200 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center shadow-inner border border-slate-100 group-hover:bg-indigo-50 transition-colors">
@@ -172,7 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{t.description}</p>
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{t.subCategory}</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{t.subCategory} • {t.mainCategory}</p>
                   </div>
                 </div>
                 <div className={`text-sm font-black whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
@@ -180,9 +202,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
             ))}
-            {filteredTransactions.length === 0 && (
+            {activeCategoryTransactions.length === 0 && (
               <div className="text-center py-12 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Нема податоци за овој месец</p>
+                <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Нема трансакции</p>
               </div>
             )}
           </div>
