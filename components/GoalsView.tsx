@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { FinancialGoal } from '../types';
 import { getGoalStrategy } from '../services/geminiService';
+// Fix: Replaced missing IconCar with IconTransport
+import { IconTravel, IconTransport, IconHome, IconEducation, IconDefault, IconPlus } from './Icons';
 
 interface GoalsViewProps {
   goals: FinancialGoal[];
@@ -69,12 +71,14 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   };
 
   const getCategoryIcon = (cat: FinancialGoal['category']) => {
+    const indigoClass = "w-7 h-7 text-indigo-600";
     switch(cat) {
-      case 'travel': return '▽';
-      case 'car': return '▱';
-      case 'home': return '⌂';
-      case 'education': return '⌘';
-      default: return '⦿';
+      case 'travel': return <IconTravel className={indigoClass} />;
+      // Fix: Used IconTransport instead of IconCar
+      case 'car': return <IconTransport className={indigoClass} />;
+      case 'home': return <IconHome className={indigoClass} />;
+      case 'education': return <IconEducation className={indigoClass} />;
+      default: return <IconDefault className={indigoClass} />;
     }
   };
 
@@ -149,7 +153,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
             <div key={goal.id} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
               <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform font-black text-indigo-600 leading-none">
+                  <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
                     {getCategoryIcon(goal.category)}
                   </div>
                   <div>
@@ -221,7 +225,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                       onClick={() => setDepositGoalId(goal.id)}
                       className="flex-grow py-3 bg-slate-900 text-white text-[10px] font-black rounded-xl hover:bg-slate-800 transition uppercase tracking-widest flex items-center justify-center gap-2"
                     >
-                      <span>△</span> Додади заштеда
+                      <span><IconPlus className="w-3 h-3 inline mr-1" /></span> Додади заштеда
                     </button>
                     <button 
                       onClick={() => handleGetStrategy(goal)}
