@@ -9,23 +9,17 @@ import GoalsView from './components/GoalsView';
 import SettingsView from './components/SettingsView';
 import { Transaction, Budget, MainCategory, Reminder, SubCategoryMap, FinancialGoal, CardInfo, Member, AICategorizationResponse } from './types';
 import { INITIAL_TRANSACTIONS, INITIAL_BUDGETS, INITIAL_CATEGORIES as DefaultSubs } from './constants';
-import { getFinancialAdvice, categorizeTransactionsBatch } from './services/geminiService';
+import { getFinancialAdvice, categorizeTransactionsBatch, suggestBudget } from './services/geminiService';
+import { IconBudget } from './components/Icons';
 
 const App: React.FC = () => {
-  // Помошна функција за вчитување од localStorage
   const getSavedData = <T,>(key: string, defaultValue: T): T => {
     const saved = localStorage.getItem(key);
     if (!saved) return defaultValue;
-    try {
-      return JSON.parse(saved);
-    } catch (e) {
-      return defaultValue;
-    }
+    try { return JSON.parse(saved); } catch (e) { return defaultValue; }
   };
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  
-  // Иницијализација на состојбите со податоци од localStorage
   const [transactions, setTransactions] = useState<Transaction[]>(() => getSavedData('transactions', INITIAL_TRANSACTIONS));
   const [budgets, setBudgets] = useState<Budget[]>(() => getSavedData('budgets', INITIAL_BUDGETS));
   const [reminders, setReminders] = useState<Reminder[]>(() => getSavedData('reminders', []));
@@ -35,20 +29,19 @@ const App: React.FC = () => {
   const [cardInfo, setCardInfo] = useState<CardInfo | null>(() => getSavedData('cardInfo', null));
   const [householdName, setHouseholdName] = useState(() => getSavedData('householdName', 'Моето домаќинство'));
   
-  const [aiAdvice, setAiAdvice] = useState<string>('');
-  const [members] = useState<Member[]>([
-    { id: '1', name: 'Петар', avatarColor: '#6366f1' },
-    { id: '2', name: 'Марија', avatarColor: '#ec4899' }
-  ]);
-  const [currentMemberId, setCurrentMemberId] = useState('1');
+  // Onboarding States
+  const [isOnboarding, setIsOnboarding] = useState(() => !localStorage.getItem('onboardingDone'));
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [tempIncome, setTempIncome] = useState('');
+  const [isGeneratingBudget, setIsGeneratingBudget] = useState(false);
 
+  const [aiAdvice, setAiAdvice] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingQueueRef = useRef<{ id: string; description: string }[]>([]);
 
-  // Автоматско зачувување во localStorage при секоја промена
   useEffect(() => { localStorage.setItem('transactions', JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { localStorage.setItem('budgets', JSON.stringify(budgets)); }, [budgets]);
   useEffect(() => { localStorage.setItem('reminders', JSON.stringify(reminders)); }, [reminders]);
@@ -58,63 +51,38 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('cardInfo', JSON.stringify(cardInfo)); }, [cardInfo]);
   useEffect(() => { localStorage.setItem('householdName', JSON.stringify(householdName)); }, [householdName]);
 
-  const pageTitles: Record<TabType, string> = {
-    dashboard: 'Преглед',
-    transactions: 'Трансакции',
-    budget: 'Буџетирање',
-    goals: 'Финансиски цели',
-    reminders: 'Потсетници',
-    settings: 'Подесувања'
-  };
+  const completeOnboarding = async (useAi: boolean) => {
+    const incomeValue = parseFloat(tempIncome.replace(/\D/g, ''));
+    if (isNaN(incomeValue) || incomeValue <= 0) return;
 
-  useEffect(() => {
-    const checkReminders = () => {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      reminders.forEach((r: Reminder) => {
-        if (r.isPaid) return;
-        const dueDate = new Date(r.dueDate);
-        dueDate.setHours(0, 0, 0, 0);
-        const diffTime = dueDate.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays <= r.notificationDaysBefore && diffDays >= 0) {
-          new Notification("Потсетник за плаќање!", {
-            body: `Обврската "${r.title}" (износ: ${r.amount} ден.) достасува за ${diffDays} дена.`,
-            icon: "https://cdn-icons-png.flaticon.com/512/583/583985.png"
-          });
+    if (useAi) {
+      setIsGeneratingBudget(true);
+      try {
+        const suggestions = await suggestBudget(incomeValue);
+        if (suggestions.length > 0) {
+          setBudgets(suggestions.map(s => ({
+            mainCategory: s.mainCategory,
+            limit: s.amount,
+            spent: 0
+          })));
         }
-      });
+      } catch (e) { console.error(e); }
+      setIsGeneratingBudget(false);
+    }
+
+    const incomeTrans: Transaction = {
+      id: 'init-income',
+      date: new Date().toISOString(),
+      description: 'Почетен месечен приход',
+      amount: incomeValue,
+      mainCategory: MainCategory.INCOME,
+      subCategory: 'Плата',
+      type: 'income'
     };
-    if (reminders.length > 0) checkReminders();
-  }, [reminders]);
-
-  const totalIncomeForMonth = useMemo(() => {
-    return transactions
-      .filter((t: Transaction) => {
-        const d = new Date(t.date);
-        return t.type === 'income' && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
-      })
-      .reduce((acc: number, curr: Transaction) => acc + curr.amount, 0);
-  }, [transactions, selectedMonth, selectedYear]);
-
-  const totalExpensesForMonth = useMemo(() => {
-    return transactions
-      .filter((t: Transaction) => {
-        const d = new Date(t.date);
-        return t.type === 'expense' && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
-      })
-      .reduce((acc: number, curr: Transaction) => acc + Math.abs(curr.amount), 0);
-  }, [transactions, selectedMonth, selectedYear]);
-
-  const carryOverBalance = useMemo(() => {
-    return transactions.filter((t: Transaction) => {
-      const d = new Date(t.date);
-      if (d.getFullYear() < selectedYear) return true;
-      if (d.getFullYear() === selectedYear && d.getMonth() < selectedMonth) return true;
-      return false;
-    }).reduce((acc: number, curr: Transaction) => acc + (curr.type === 'income' ? curr.amount : curr.amount), 0);
-  }, [transactions, selectedMonth, selectedYear]);
+    setTransactions([incomeTrans]);
+    localStorage.setItem('onboardingDone', 'true');
+    setIsOnboarding(false);
+  };
 
   const processCategorizationBatch = useCallback(async () => {
     if (pendingQueueRef.current.length === 0) return;
@@ -154,127 +122,112 @@ const App: React.FC = () => {
     }
   };
 
-  const simulateBankTransaction = () => {
-    const descriptions = [
-      'Платено во Cineplexx Skopje City Mall',
-      'Пазарено во Веро Центар',
-      'Бензинска пумпа Макпетрол',
-      'Аптека Зегин - Скопје',
-      'Забавен парк Луна',
-      'Платено во Ресторан Пелистер',
-      'H&M Skopje City Mall'
-    ];
-    const randomDesc = descriptions[Math.floor(Math.random() * descriptions.length)];
-    const randomAmount = Math.floor(Math.random() * (3000 - 200 + 1)) + 200;
+  const totalIncomeForMonth = useMemo(() => {
+    return transactions
+      .filter((t: Transaction) => {
+        const d = new Date(t.date);
+        return t.type === 'income' && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+      })
+      .reduce((acc: number, curr: Transaction) => acc + curr.amount, 0);
+  }, [transactions, selectedMonth, selectedYear]);
 
-    const newTrans: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toISOString(),
-      description: randomDesc,
-      amount: -randomAmount,
-      mainCategory: MainCategory.NEEDS,
-      subCategory: 'Се синхронизира...',
-      type: 'expense',
-      isCategorizing: true,
-      memberId: currentMemberId
-    };
-    handleAddTransaction(newTrans);
-    setActiveTab('transactions');
-  };
+  const totalExpensesForMonth = useMemo(() => {
+    return transactions
+      .filter((t: Transaction) => {
+        const d = new Date(t.date);
+        return t.type === 'expense' && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+      })
+      .reduce((acc: number, curr: Transaction) => acc + Math.abs(curr.amount), 0);
+  }, [transactions, selectedMonth, selectedYear]);
 
-  const handleAddGoal = (newGoal: FinancialGoal) => {
-    setFinancialGoals(prev => [...prev, newGoal]);
-  };
-
-  const handleUpdateGoalProgress = (id: string, amount: number) => {
-    const goal = financialGoals.find(g => g.id === id);
-    if (!goal) return;
-    setFinancialGoals(prev => prev.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
-    const newTrans: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toISOString(),
-      description: `Заштеда: ${goal.title}`,
-      amount: -amount,
-      mainCategory: MainCategory.INVESTMENTS,
-      subCategory: 'Штедење',
-      type: 'expense',
-      memberId: currentMemberId
-    };
-    handleAddTransaction(newTrans);
-  };
+  const carryOverBalance = useMemo(() => {
+    return transactions.filter((t: Transaction) => {
+      const d = new Date(t.date);
+      if (d.getFullYear() < selectedYear) return true;
+      if (d.getFullYear() === selectedYear && d.getMonth() < selectedMonth) return true;
+      return false;
+    }).reduce((acc: number, curr: Transaction) => acc + (curr.type === 'income' ? curr.amount : curr.amount), 0);
+  }, [transactions, selectedMonth, selectedYear]);
 
   const refreshAdvice = useCallback(async () => {
-    const advice = await getFinancialAdvice(transactions, budgets);
-    setAiAdvice(advice);
+    if (transactions.length > 0) {
+      const advice = await getFinancialAdvice(transactions, budgets);
+      setAiAdvice(advice);
+    }
   }, [transactions, budgets]);
 
   useEffect(() => { refreshAdvice(); }, [refreshAdvice]);
 
-  const handleMonthChange = (m: number, y: number) => {
-    let newM = m; let newY = y;
-    if (m > 11) { newM = 0; newY = y + 1; }
-    if (m < 0) { newM = 11; newY = y - 1; }
-    setSelectedMonth(newM); setSelectedYear(newY);
-  };
-
-  const requestNotificationPermission = async () => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") return;
-    await Notification.requestPermission();
-  };
-
-  const handleResetApp = () => {
-    if (window.confirm("Дали сте сигурни дека сакате да ги избришете СИТЕ податоци? Ова дејство е неповратно.")) {
-      localStorage.clear();
-      window.location.reload();
-    }
-  };
+  if (isOnboarding) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full animate-fadeIn text-center">
+          <div className="w-16 h-16 bg-indigo-600 rounded-3xl mx-auto mb-8 flex items-center justify-center text-white shadow-xl shadow-indigo-100">
+            <IconBudget className="w-8 h-8" />
+          </div>
+          
+          {onboardingStep === 1 ? (
+            <div className="space-y-6">
+              <h2 className="text-3xl font-black text-slate-900">Добредојде!</h2>
+              <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход (плата, фриленс...).</p>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  inputMode="numeric"
+                  placeholder="пр: 45.000" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-black text-2xl text-center text-indigo-600 transition-all"
+                  value={tempIncome.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+                  onChange={(e) => setTempIncome(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+              <button 
+                disabled={!tempIncome}
+                onClick={() => setOnboardingStep(2)}
+                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg hover:bg-slate-800 transition-all disabled:opacity-30"
+              >
+                Продолжи
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <h2 className="text-3xl font-black text-slate-900">Паметен Буџет</h2>
+              <p className="text-slate-500 font-medium">Дали сакаш AI да ти предложи распределба на твоите {parseInt(tempIncome).toLocaleString('mk-MK')} денари?</p>
+              <div className="flex flex-col gap-3">
+                <button 
+                  disabled={isGeneratingBudget}
+                  onClick={() => completeOnboarding(true)}
+                  className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all"
+                >
+                  {isGeneratingBudget ? '✨ Се генерира...' : '✨ Да, предложи ми AI Буџет'}
+                </button>
+                <button 
+                  onClick={() => completeOnboarding(false)}
+                  className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px]"
+                >
+                  Не, ќе внесам рачно подоцна
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={handleMonthChange} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />;
+        return <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={(m, y) => {setSelectedMonth(m); setSelectedYear(y);}} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />;
       case 'transactions':
-        return (
-          <TransactionView 
-            transactions={transactions} 
-            onAddTransaction={handleAddTransaction} 
-            categories={categories} 
-            members={members}
-            currentMemberId={currentMemberId}
-          />
-        );
+        return <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} categories={categories} members={[]} currentMemberId="" />;
       case 'budget':
-        return <BudgetView budgets={budgets} onUpdateBudget={(cat: MainCategory, limit: number) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />;
+        return <BudgetView budgets={budgets} onUpdateBudget={(cat, limit) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />;
       case 'reminders':
-        return <RemindersView reminders={reminders} onAddReminder={(r: Reminder) => setReminders(prev => [...prev, r])} onTogglePaid={(id: string) => setReminders(prev => prev.map(r => r.id === id ? {...r, isPaid: !r.isPaid} : r))} onDeleteReminder={(id: string) => setReminders(prev => prev.filter(r => r.id !== id))} onRequestPermission={requestNotificationPermission} />;
+        return <RemindersView reminders={reminders} onAddReminder={(r) => setReminders(prev => [...prev, r])} onTogglePaid={(id) => setReminders(prev => prev.map(r => r.id === id ? {...r, isPaid: !r.isPaid} : r))} onDeleteReminder={(id) => setReminders(prev => prev.filter(r => r.id !== id))} onRequestPermission={async () => {}} />;
       case 'goals':
-        return <GoalsView goals={financialGoals} onAddGoal={handleAddGoal} onUpdateGoalProgress={handleUpdateGoalProgress} onDeleteGoal={(id: string) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />;
+        return <GoalsView goals={financialGoals} onAddGoal={(g) => setFinancialGoals(prev => [...prev, g])} onUpdateGoalProgress={(id, amt) => setFinancialGoals(prev => prev.map(g => g.id === id ? {...g, currentAmount: g.currentAmount + amt} : g))} onDeleteGoal={(id) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />;
       case 'settings':
-        return (
-          <div className="space-y-12">
-            <SettingsView 
-              categories={categories} 
-              onUpdateCategories={setCategories} 
-              isBankConnected={isBankConnected}
-              onToggleBank={(status: boolean) => {
-                setIsBankConnected(status);
-                if (!status) setCardInfo(null);
-              }}
-              cardInfo={cardInfo}
-              onUpdateCardInfo={setCardInfo}
-              onSimulateTransaction={simulateBankTransaction}
-            />
-            <div className="pt-8 border-t border-slate-100 flex justify-center">
-              <button 
-                onClick={handleResetApp}
-                className="px-8 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-red-100 hover:bg-red-600 hover:text-white transition-all"
-              >
-                ⚠️ Целосен ресет на податоци
-              </button>
-            </div>
-          </div>
-        );
+        return <SettingsView categories={categories} onUpdateCategories={setCategories} isBankConnected={isBankConnected} onToggleBank={(s) => setIsBankConnected(s)} cardInfo={cardInfo} onUpdateCardInfo={setCardInfo} onSimulateTransaction={() => {}} />;
       default: return null;
     }
   };
@@ -282,7 +235,13 @@ const App: React.FC = () => {
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isBankConnected={isBankConnected}>
       <header className="mb-10 px-2 flex flex-col items-center justify-center text-center">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tight">{pageTitles[activeTab]}</h1>
+        <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+          {activeTab === 'dashboard' ? 'Преглед' : 
+           activeTab === 'transactions' ? 'Трансакции' :
+           activeTab === 'budget' ? 'Буџетирање' :
+           activeTab === 'goals' ? 'Цели' :
+           activeTab === 'reminders' ? 'Потсетници' : 'Подесувања'}
+        </h1>
         <div className="w-12 h-1.5 bg-indigo-600 rounded-full mt-3"></div>
       </header>
       {renderContent()}
