@@ -61,7 +61,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const startScanLoop = () => {
     const scan = () => {
-      if (!videoRef.current || !canvasRef.current || isAnalyzing || isQrFound) return;
+      if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
       
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -82,17 +82,9 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
             if (code) {
               setIsQrFound(true);
-              // Додаваме мало задоцнување за да овозможиме автофокус на камерата
-              setTimeout(() => {
-                if (canvasRef.current && videoRef.current) {
-                  const finalCtx = canvasRef.current.getContext('2d');
-                  if (finalCtx) {
-                    finalCtx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-                    const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
-                    processCapturedReceipt(base64);
-                  }
-                }
-              }, 350);
+              // Не сликаме автоматски, само го информираме корисникот дека QR кодот е во фокус
+            } else {
+              setIsQrFound(false);
             }
           } catch (e) {
             console.error("Scanner Error:", e);
@@ -102,6 +94,18 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       scanFrameRef.current = requestAnimationFrame(scan);
     };
     scanFrameRef.current = requestAnimationFrame(scan);
+  };
+
+  const captureManual = () => {
+    if (canvasRef.current && videoRef.current) {
+      const finalCtx = canvasRef.current.getContext('2d');
+      if (finalCtx) {
+        // Сними го тековниот фрејм
+        finalCtx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        const base64 = canvasRef.current.toDataURL('image/jpeg', 0.9).split(',')[1];
+        processCapturedReceipt(base64);
+      }
+    }
   };
 
   const processCapturedReceipt = async (base64: string) => {
@@ -131,7 +135,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       }
     } catch (err) {
       console.error("Receipt Processing Failed:", err);
-      alert("Неуспешно читање на сметката. Обидете се со подобра светлина или внесете ги податоците рачно.");
+      alert("Неуспешно читање на сметката. Осигурајте се дека сликата е јасна и светла, па обидете се повторно.");
     } finally {
       setIsAnalyzing(false);
       setIsQrFound(false);
@@ -143,7 +147,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       const s = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1920 }, // Зголемена резолуција за подобар OCR
+          width: { ideal: 1920 },
           height: { ideal: 1080 }
         } 
       });
@@ -206,13 +210,13 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   return (
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
-          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
+          <div className="relative w-full flex-grow overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className={`relative w-64 h-64 border-2 border-white/20 transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/10 scale-105' : 'bg-black/10'}`}>
+              <div className={`relative w-64 h-64 border-2 transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/10 scale-105' : 'border-white/20 bg-black/10'}`}>
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-indigo-500 -translate-x-1 -translate-y-1"></div>
                 <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-indigo-500 translate-x-1 -translate-y-1"></div>
                 <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-indigo-500 -translate-x-1 translate-y-1"></div>
@@ -220,19 +224,29 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-12 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10">
                    <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] whitespace-nowrap">
-                    {isQrFound ? '✅ СКЕНИРАНО! ПОЧЕКАЈ...' : 'НИШАНИ КОН QR КОДОТ'}
+                    {isQrFound ? '✅ QR КОДОТ Е ТУКА! СЛИКАЈ' : 'НИШАНИ КОН QR КОДОТ'}
                    </p>
                 </div>
 
-                {!isQrFound && (
+                {!isAnalyzing && (
                   <div className="absolute inset-x-2 top-0 h-0.5 bg-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.8)] animate-[scanLine_2s_infinite]"></div>
                 )}
               </div>
             </div>
           </div>
           
-          <div className="p-10 w-full max-w-md">
-            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10 active:scale-95 transition-all">
+          <div className="p-8 w-full max-w-md flex flex-col gap-4 bg-black">
+            <button 
+              onClick={captureManual} 
+              className="w-full py-6 bg-white text-black rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              <div className="w-4 h-4 rounded-full border-4 border-black animate-pulse"></div>
+              СЛИКАЈ СМЕТКА
+            </button>
+            <button 
+              onClick={closeScanner} 
+              className="w-full py-4 text-white/50 font-black uppercase text-[10px] tracking-widest active:scale-95 transition-all"
+            >
               Прекини
             </button>
           </div>
@@ -240,18 +254,18 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       )}
 
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[110] bg-indigo-600 flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
-          <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-10 animate-pulse border border-white/20">
-            <IconCamera className="w-12 h-12 text-white" />
+        <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
+          <div className="w-24 h-24 bg-indigo-600 rounded-[2.5rem] flex items-center justify-center mb-10 animate-bounce shadow-2xl shadow-indigo-500/20">
+            <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-3xl font-black tracking-tight mb-4">Анализирам сметка...</h2>
-          <p className="text-indigo-100 font-medium opacity-80 max-w-xs text-lg">
-            Вештачката интелигенција ги чита податоците.
+          <h2 className="text-3xl font-black tracking-tight mb-4">Анализирам...</h2>
+          <p className="text-slate-400 font-medium max-w-xs text-lg">
+            Вештачката интелигенција ја чита вашата сметка. Ве молиме почекајте.
           </p>
-          <div className="mt-16 flex gap-2">
-            <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-duration:0.6s]"></div>
-            <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-delay:0.2s] [animation-duration:0.6s]"></div>
-            <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-delay:0.4s] [animation-duration:0.6s]"></div>
+          <div className="mt-16 flex gap-3">
+            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-duration:0.6s]"></div>
+            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-delay:0.2s] [animation-duration:0.6s]"></div>
+            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-delay:0.4s] [animation-duration:0.6s]"></div>
           </div>
         </div>
       )}
