@@ -32,6 +32,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [qrDetectedInRealTime, setQrDetectedInRealTime] = useState(false);
   const [flash, setFlash] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -42,8 +43,37 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   useEffect(() => {
     if (isScannerOpen && stream && videoRef.current) {
       videoRef.current.srcObject = stream;
+      startScanLoop();
     }
+    return () => {
+      if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
+    };
   }, [isScannerOpen, stream]);
+
+  const startScanLoop = () => {
+    const scan = () => {
+      if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        if (canvas.width !== video.videoWidth) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+          setQrDetectedInRealTime(!!code);
+        }
+      }
+      scanFrameRef.current = requestAnimationFrame(scan);
+    };
+    scanFrameRef.current = requestAnimationFrame(scan);
+  };
 
   const handleCapture = async () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -51,32 +81,26 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     const video = videoRef.current;
     const canvas = canvasRef.current;
     
-    // Постави димензии на канвас врз основа на видеото
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Направи слика
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
     
-    // Локална проверка за QR код
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const localQr = jsQR(imageData.data, imageData.width, imageData.height);
 
-    // Визуелен ефект
     setFlash(true);
     setTimeout(() => setFlash(false), 150);
     
-    // Прво го затвораме скенерот за да види корисникот дека нешто се случува
     closeScanner();
     setIsAnalyzing(true);
 
     try {
       let qrContent = localQr ? localQr.data : null;
 
-      // Ако локалниот скенер не најде ништо, прашај го Gemini да го најде QR кодот
       if (!qrContent) {
         qrContent = await extractQrDataFromImage(base64Image);
       }
@@ -85,12 +109,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         throw new Error("Не е пронајден QR код");
       }
 
-      // Екстракција на износ (am=)
       let extractedAmount = 0;
       const amMatch = qrContent.match(/am=([\d.]+)/);
       if (amMatch) extractedAmount = parseFloat(amMatch[1]);
 
-      // Анализа и категоризација
       const aiResult = await analyzeQrData(qrContent, categories);
       
       onAddTransaction({
@@ -130,6 +152,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       setStream(null);
     }
     setIsScannerOpen(false);
+    if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,13 +197,15 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
           {flash && <div className="absolute inset-0 z-[105] bg-white"></div>}
 
-          <div className="relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 border-slate-800">
+          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-colors duration-500 ${qrDetectedInRealTime ? 'border-green-500' : 'border-slate-800'}`}>
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
             <div className="absolute inset-x-0 top-12 flex justify-center pointer-events-none px-6">
-                <div className="bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border border-white/10 text-white flex items-center gap-3">
-                   <p className="text-[12px] font-black uppercase tracking-[0.2em]">НАСОЧЕТЕ КОН QR КОДОТ</p>
+                <div className={`bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border transition-all duration-300 flex items-center gap-3 ${qrDetectedInRealTime ? 'scale-110 border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
+                   <p className="text-[12px] font-black uppercase tracking-[0.2em]">
+                    {qrDetectedInRealTime ? '✅ QR КОДОТ Е ВО ФОКУС' : 'НАСОЧЕТЕ КОН QR КОДОТ'}
+                   </p>
                 </div>
             </div>
           </div>
