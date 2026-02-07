@@ -1,24 +1,22 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-// @ts-ignore
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
-import { analyzeQrData } from '../services/geminiService';
+import { analyzeReceiptImage } from '../services/geminiService';
 import { IconCamera, IconTransactions, IconEdit } from './Icons';
 
 interface TransactionViewProps {
   transactions: Transaction[];
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  onDeleteTransaction: (id: string) => void;
   categories: SubCategoryMap;
   members: Member[];
   currentMemberId: string;
 }
 
 const TransactionView: React.FC<TransactionViewProps> = ({ 
-  transactions, onAddTransaction, onUpdateTransaction, onDeleteTransaction, categories, members, currentMemberId 
+  transactions, onAddTransaction, onUpdateTransaction, categories, members, currentMemberId 
 }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -32,7 +30,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [qrData, setQrData] = useState<string | null>(null);
+  const [isQrFound, setIsQrFound] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,9 +47,20 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     };
   }, [isScannerOpen, stream]);
 
+  useEffect(() => {
+    if (selectedMainCat === 'AI') {
+      setSubCategory('');
+    } else {
+      const availableSubs = categories[selectedMainCat as MainCategory] || [];
+      if (availableSubs.length > 0) setSubCategory(availableSubs[0]);
+      else setSubCategory(selectedMainCat);
+    }
+  }, [selectedMainCat, categories]);
+
   const startScanLoop = () => {
     const scan = () => {
-      if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
+      if (!videoRef.current || !canvasRef.current || isAnalyzing || isQrFound) return;
+      
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
@@ -59,14 +68,18 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
           if (code) {
-            setQrData(code.data);
-          } else {
-            setQrData(null);
+            setIsQrFound(true);
+            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            processCapturedReceipt(base64);
           }
         }
       }
@@ -75,55 +88,41 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     scanFrameRef.current = requestAnimationFrame(scan);
   };
 
-  const handleCaptureQr = async () => {
-    if (!qrData) return;
+  const processCapturedReceipt = async (base64: string) => {
     setIsAnalyzing(true);
-    
-    // Екстракција на износ од македонска сметка (am= параметар во URL)
-    let extractedAmount = 0;
-    try {
-      const url = new URL(qrData);
-      const am = url.searchParams.get('am');
-      if (am) extractedAmount = parseFloat(am);
-    } catch (e) {
-      // Ако не е URL, бараме бројки со regex
-      const match = qrData.match(/am=([\d.]+)/);
-      if (match) extractedAmount = parseFloat(match[1]);
-    }
-
+    // Веднаш гасиме камера како кај Мој ДДВ
     closeScanner();
-
+    
     try {
-      const aiResult = await analyzeQrData(qrData, categories);
-      
-      onAddTransaction({
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString(),
-        description: aiResult?.description || 'Скенирана сметка',
-        amount: -Math.abs(extractedAmount || 0),
-        mainCategory: (aiResult?.mainCategory as MainCategory) || MainCategory.NEEDS,
-        subCategory: aiResult?.subCategory || 'Друго',
-        type: 'expense',
-        memberId: currentMemberId,
-        isCategorizing: false
-      });
+      const result = await analyzeReceiptImage(base64, categories);
+      if (result) {
+        setDescription(result.description);
+        setAmount(result.amount.toString());
+        setSelectedMainCat(result.mainCategory);
+        setSubCategory(result.subCategory);
+      }
     } catch (err) {
-      alert("Грешка при обработка на QR кодот.");
+      alert("Неуспешно читање. Ве молиме внесете ги податоците рачно.");
     } finally {
       setIsAnalyzing(false);
-      setQrData(null);
+      setIsQrFound(false);
     }
   };
 
   const openScanner = async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
       });
       setStream(s);
       setIsScannerOpen(true);
+      setIsQrFound(false);
     } catch (err) {
-      alert("Нема пристап до камерата.");
+      alert("Дозволете пристап до камерата за скенирање.");
     }
   };
 
@@ -167,7 +166,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const saveEdit = () => {
     if (editingId) {
-      onUpdateTransaction(editingId, { mainCategory: editMainCat, subCategory: editSubCat });
+      onUpdateTransaction(editingId, {
+        mainCategory: editMainCat,
+        subCategory: editSubCat
+      });
       setEditingId(null);
     }
   };
@@ -175,62 +177,68 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   return (
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
-          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-colors duration-300 ${qrData ? 'border-green-500' : 'border-slate-800'}`}>
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
+          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            <div className="absolute inset-x-0 top-10 flex justify-center pointer-events-none">
-                <div className={`bg-black/60 backdrop-blur-xl px-6 py-3 rounded-full border transition-all ${qrData ? 'scale-110 border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
-                   <p className="text-[11px] font-black uppercase tracking-[0.2em]">
-                    {qrData ? '✅ QR КОДОТ Е ДЕТЕКТИРАН!' : 'НАСОЧЕТЕ КОН QR КОДОТ'}
+            {/* Скенер оверлеј */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className={`w-64 h-64 border-2 rounded-[2rem] transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/20 scale-110' : 'border-white/30 bg-white/5'}`}>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full">
+                   <p className="text-[10px] font-black text-white uppercase tracking-widest whitespace-nowrap">
+                    {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR кодот'}
                    </p>
                 </div>
-            </div>
-
-            {qrData && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                 <div className="w-48 h-48 border-4 border-green-500 rounded-3xl animate-pulse shadow-[0_0_50px_rgba(34,197,94,0.5)]"></div>
+                {/* Анимирана линија за скенирање */}
+                {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-[scanLine_2s_infinite]"></div>}
               </div>
-            )}
+            </div>
+            
+            <style>{`
+              @keyframes scanLine {
+                0% { top: 10%; opacity: 0; }
+                50% { opacity: 1; }
+                100% { top: 90%; opacity: 0; }
+              }
+            `}</style>
           </div>
           
-          <div className="p-8 w-full max-w-md bg-black">
-            <button 
-              disabled={!qrData}
-              onClick={handleCaptureQr} 
-              className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${qrData ? 'bg-green-500 text-white' : 'bg-slate-800 text-slate-500'}`}
-            >
-              <IconCamera className="w-5 h-5" />
-              ПРОЧИТАЈ QR КОД
+          <div className="p-8 w-full max-w-md">
+            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10 active:scale-95 transition-all">
+              Затвори камера
             </button>
-            <button onClick={closeScanner} className="w-full py-4 text-white/30 font-black uppercase text-[10px] tracking-widest mt-2">Прекини</button>
           </div>
         </div>
       )}
 
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
-          <div className="w-20 h-20 bg-green-500 rounded-[2rem] flex items-center justify-center mb-6 animate-bounce">
-            <IconTransactions className="w-10 h-10 text-white" />
+        <div className="fixed inset-0 z-[110] bg-indigo-600 flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
+          <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
+            <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-black mb-2">Обработка...</h2>
-          <p className="text-slate-400 text-sm">Ги подготвуваме податоците од вашата сметка.</p>
+          <h2 className="text-2xl font-black tracking-tight mb-2">Обработка на податоци...</h2>
+          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI го анализира продавачот и износот од сметката.</p>
+          <div className="mt-12 flex gap-1">
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.2s]"></div>
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.4s]"></div>
+          </div>
         </div>
       )}
 
       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
-          <button onClick={openScanner} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 active:scale-95 transition-all group">
-            <IconCamera className="w-4 h-4" /> Скенирај QR
+          <button onClick={openScanner} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-indigo-100 active:scale-95 transition-all">
+            <IconCamera className="w-3.5 h-3.5" /> Скенирај QR
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex p-1 bg-slate-100 rounded-xl mb-2">
-            <button type="button" onClick={() => setType('expense')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'expense' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>ОДЛИВ</button>
-            <button type="button" onClick={() => setType('income')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'income' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>ПРИЛИВ</button>
+            <button type="button" onClick={() => setType('expense')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'expense' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ОДЛИВ</button>
+            <button type="button" onClick={() => setType('income')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'income' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ПРИЛИВ</button>
           </div>
           
           <div className="flex flex-col md:flex-row gap-3">
@@ -248,49 +256,78 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             </select>
           </div>
 
-          <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-slate-800 transition-all active:scale-[0.98]">Додади рачно</button>
+          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">Додади во листа</button>
         </form>
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-100">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
-           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Листа на трансакции</p>
-        </div>
         {transactions.map(t => {
           const isEditing = editingId === t.id;
+
           return (
-            <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4 transition-all hover:bg-slate-50/50">
+            <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4">
               <div className="flex items-center gap-4 flex-grow">
-                <div className="w-12 h-12 bg-white border border-slate-100 rounded-2xl flex items-center justify-center group-hover:shadow-md transition-all">
+                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
                   {getTransactionIcon(t.subCategory, t.mainCategory)}
                 </div>
                 <div className="flex-grow">
-                  <p className="font-black text-slate-900 text-base group-hover:text-indigo-600 transition-colors">{t.description}</p>
+                  <p className="font-black text-slate-900 text-base">{t.description}</p>
+                  
                   {isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center">
-                      <select className="text-[10px] font-black p-2 border rounded-xl" value={editMainCat} onChange={(e) => setEditMainCat(e.target.value as MainCategory)}>
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                      <select 
+                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
+                        value={editMainCat}
+                        onChange={(e) => {
+                          const newMain = e.target.value as MainCategory;
+                          setEditMainCat(newMain);
+                          setEditSubCat(categories[newMain][0] || '');
+                        }}
+                      >
                         {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
-                      <select className="text-[10px] font-black p-2 border rounded-xl" value={editSubCat} onChange={(e) => setEditSubCat(e.target.value)}>
+                      <select 
+                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
+                        value={editSubCat}
+                        onChange={(e) => setEditSubCat(e.target.value)}
+                      >
                         {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
                       </select>
-                      <button onClick={saveEdit} className="text-[10px] font-black text-white px-4 py-2 bg-indigo-600 rounded-xl">ОК</button>
-                      <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-4 py-2 bg-slate-100 rounded-xl">X</button>
+                      <div className="flex gap-1">
+                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 uppercase px-2 py-1 bg-green-50 rounded">ОК</button>
+                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-red-400 uppercase px-2 py-1 bg-red-50 rounded">X</button>
+                      </div>
                     </div>
                   ) : (
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5 flex items-center gap-2">
-                      {t.subCategory}
-                      <button onClick={() => startEditing(t)} className="opacity-0 group-hover:opacity-100 text-indigo-400"><IconEdit className="w-3.5 h-3.5" /></button>
+                    <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
+                      {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
+                      {!t.isCategorizing && (
+                        <button 
+                          onClick={() => startEditing(t)}
+                          className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all ml-1"
+                          title="Промени категорија"
+                        >
+                          <IconEdit className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </p>
                   )}
                 </div>
               </div>
-              <div className={`text-sm font-black px-4 py-2 rounded-xl ${t.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-900'}`}>
-                {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} <span className="text-[10px] opacity-60">ден.</span>
+              <div className="flex items-center justify-between md:justify-end gap-4">
+                <div className={`text-sm font-black whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
+                </div>
               </div>
             </div>
           );
         })}
+        {transactions.length === 0 && (
+          <div className="text-center py-20 opacity-30">
+             <IconTransactions className="w-12 h-12 mx-auto mb-4" />
+             <p className="text-[10px] font-black uppercase tracking-widest">Нема трансакции</p>
+          </div>
+        )}
       </div>
     </div>
   );
