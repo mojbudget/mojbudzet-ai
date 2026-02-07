@@ -1,11 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore
-import jsQR from 'jsqr';
+import * as jsQRModule from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
 import { analyzeReceiptImage } from '../services/geminiService';
 import { IconCamera, IconTransactions, IconEdit } from './Icons';
+
+// Поправка за ESM импорт на jsQR
+const jsQR = (jsQRModule as any).default || jsQRModule;
 
 interface TransactionViewProps {
   transactions: Transaction[];
@@ -74,14 +77,19 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
+          
+          try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
 
-          if (code) {
-            setIsQrFound(true);
-            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-            processCapturedReceipt(base64);
+            if (code) {
+              setIsQrFound(true);
+              const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              processCapturedReceipt(base64);
+            }
+          } catch (e) {
+            console.error("QR Scan error:", e);
           }
         }
       }
@@ -310,7 +318,15 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                       </select>
                       <div className="flex gap-1">
                         <button onClick={saveEdit} className="text-[10px] font-black text-white uppercase px-4 py-2 bg-indigo-600 rounded-xl shadow-md">ОК</button>
-                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 uppercase px-4 py-2 bg-red-50 rounded-xl border border-red-100 hover:bg-red-100 transition-all">Избриши</button>
+                        <button 
+                          onClick={() => {
+                            onDeleteTransaction(t.id);
+                            setEditingId(null);
+                          }} 
+                          className="text-[10px] font-black text-red-600 uppercase px-4 py-2 bg-red-50 rounded-xl border border-red-100 hover:bg-red-100 transition-all"
+                        >
+                          Избриши
+                        </button>
                         <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 uppercase px-4 py-2 bg-slate-100 rounded-xl">X</button>
                       </div>
                     </div>
