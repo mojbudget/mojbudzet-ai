@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
-import { analyzeReceiptImage } from '../services/geminiService';
+import { analyzeQrData } from '../services/geminiService';
 import { IconCamera, IconTransactions, IconEdit } from './Icons';
 
 interface TransactionViewProps {
@@ -32,7 +32,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isQrFound, setIsQrFound] = useState(false);
+  const [qrData, setQrData] = useState<string | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,20 +49,9 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     };
   }, [isScannerOpen, stream]);
 
-  useEffect(() => {
-    if (selectedMainCat === 'AI') {
-      setSubCategory('');
-    } else {
-      const availableSubs = categories[selectedMainCat as MainCategory] || [];
-      if (availableSubs.length > 0) setSubCategory(availableSubs[0]);
-      else setSubCategory(selectedMainCat);
-    }
-  }, [selectedMainCat, categories]);
-
   const startScanLoop = () => {
     const scan = () => {
       if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
-      
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
@@ -70,23 +59,14 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          
-          try {
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: "dontInvert",
-            });
-
-            if (code) {
-              setIsQrFound(true);
-            } else {
-              setIsQrFound(false);
-            }
-          } catch (e) {
-            console.error("Scanner Error:", e);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+          if (code) {
+            setQrData(code.data);
+          } else {
+            setQrData(null);
           }
         }
       }
@@ -95,65 +75,55 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     scanFrameRef.current = requestAnimationFrame(scan);
   };
 
-  const captureManual = () => {
-    if (canvasRef.current && videoRef.current) {
-      const finalCtx = canvasRef.current.getContext('2d');
-      if (finalCtx) {
-        finalCtx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-        const base64 = canvasRef.current.toDataURL('image/jpeg', 0.9).split(',')[1];
-        processCapturedReceipt(base64);
-      }
-    }
-  };
-
-  const processCapturedReceipt = async (base64: string) => {
+  const handleCaptureQr = async () => {
+    if (!qrData) return;
     setIsAnalyzing(true);
-    closeScanner();
     
+    // Екстракција на износ од македонска сметка (am= параметар во URL)
+    let extractedAmount = 0;
     try {
-      const result = await analyzeReceiptImage(base64, categories);
-      if (result) {
-        onAddTransaction({
-          id: Math.random().toString(36).substr(2, 9),
-          date: new Date().toISOString(),
-          description: result.description,
-          amount: -Math.abs(result.amount),
-          mainCategory: result.mainCategory as MainCategory,
-          subCategory: result.subCategory,
-          type: 'expense',
-          memberId: currentMemberId,
-          isCategorizing: false
-        });
-        
-        setDescription('');
-        setAmount('');
-        setSelectedMainCat('AI');
-      } else {
-        throw new Error("Empty result");
-      }
+      const url = new URL(qrData);
+      const am = url.searchParams.get('am');
+      if (am) extractedAmount = parseFloat(am);
+    } catch (e) {
+      // Ако не е URL, бараме бројки со regex
+      const match = qrData.match(/am=([\d.]+)/);
+      if (match) extractedAmount = parseFloat(match[1]);
+    }
+
+    closeScanner();
+
+    try {
+      const aiResult = await analyzeQrData(qrData, categories);
+      
+      onAddTransaction({
+        id: Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString(),
+        description: aiResult?.description || 'Скенирана сметка',
+        amount: -Math.abs(extractedAmount || 0),
+        mainCategory: (aiResult?.mainCategory as MainCategory) || MainCategory.NEEDS,
+        subCategory: aiResult?.subCategory || 'Друго',
+        type: 'expense',
+        memberId: currentMemberId,
+        isCategorizing: false
+      });
     } catch (err) {
-      console.error("Receipt Processing Failed:", err);
-      alert("Неуспешно читање на сметката. Осигурајте се дека сликата е јасна и светла, па обидете се повторно.");
+      alert("Грешка при обработка на QR кодот.");
     } finally {
       setIsAnalyzing(false);
-      setIsQrFound(false);
+      setQrData(null);
     }
   };
 
   const openScanner = async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        } 
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
       });
       setStream(s);
       setIsScannerOpen(true);
-      setIsQrFound(false);
     } catch (err) {
-      alert("Овозможете пристап до камерата за да скенирате сметки.");
+      alert("Нема пристап до камерата.");
     }
   };
 
@@ -197,10 +167,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const saveEdit = () => {
     if (editingId) {
-      onUpdateTransaction(editingId, {
-        mainCategory: editMainCat,
-        subCategory: editSubCat
-      });
+      onUpdateTransaction(editingId, { mainCategory: editMainCat, subCategory: editSubCat });
       setEditingId(null);
     }
   };
@@ -209,55 +176,46 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
-          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem] border-b-8 transition-colors duration-300 ${isQrFound ? 'border-green-500' : 'border-transparent'}`}>
+          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-colors duration-300 ${qrData ? 'border-green-500' : 'border-slate-800'}`}>
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            <div className="absolute inset-x-0 top-0 p-8 flex justify-center pointer-events-none">
-                <div className={`bg-black/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/10 transition-all duration-300 ${isQrFound ? 'scale-110 border-green-500/50' : ''}`}>
-                   <p className={`text-[11px] font-black uppercase tracking-[0.2em] whitespace-nowrap ${isQrFound ? 'text-green-400' : 'text-white'}`}>
-                    {isQrFound ? '✅ QR КОДОТ Е ДЕТЕКТИРАН!' : 'СНИМИ ГИ ПОДАТОЦИТЕ ОД СМЕТКАТА'}
+            <div className="absolute inset-x-0 top-10 flex justify-center pointer-events-none">
+                <div className={`bg-black/60 backdrop-blur-xl px-6 py-3 rounded-full border transition-all ${qrData ? 'scale-110 border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em]">
+                    {qrData ? '✅ QR КОДОТ Е ДЕТЕКТИРАН!' : 'НАСОЧЕТЕ КОН QR КОДОТ'}
                    </p>
                 </div>
             </div>
 
-            {isQrFound && (
-               <div className="absolute inset-0 border-[16px] border-green-500/20 pointer-events-none animate-pulse"></div>
+            {qrData && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                 <div className="w-48 h-48 border-4 border-green-500 rounded-3xl animate-pulse shadow-[0_0_50px_rgba(34,197,94,0.5)]"></div>
+              </div>
             )}
           </div>
           
-          <div className="p-8 w-full max-w-md flex flex-col gap-4 bg-black">
+          <div className="p-8 w-full max-w-md bg-black">
             <button 
-              onClick={captureManual} 
-              className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isQrFound ? 'bg-green-500 text-white' : 'bg-white text-black'}`}
+              disabled={!qrData}
+              onClick={handleCaptureQr} 
+              className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${qrData ? 'bg-green-500 text-white' : 'bg-slate-800 text-slate-500'}`}
             >
               <IconCamera className="w-5 h-5" />
-              СЛИКАЈ СЕГА
+              ПРОЧИТАЈ QR КОД
             </button>
-            <button 
-              onClick={closeScanner} 
-              className="w-full py-4 text-white/50 font-black uppercase text-[10px] tracking-widest active:scale-95 transition-all"
-            >
-              Прекини
-            </button>
+            <button onClick={closeScanner} className="w-full py-4 text-white/30 font-black uppercase text-[10px] tracking-widest mt-2">Прекини</button>
           </div>
         </div>
       )}
 
       {isAnalyzing && (
         <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
-          <div className="w-24 h-24 bg-indigo-600 rounded-[2.5rem] flex items-center justify-center mb-10 animate-bounce shadow-2xl shadow-indigo-500/20">
-            <IconCamera className="w-10 h-10 text-white" />
+          <div className="w-20 h-20 bg-green-500 rounded-[2rem] flex items-center justify-center mb-6 animate-bounce">
+            <IconTransactions className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-3xl font-black tracking-tight mb-4">Анализирам...</h2>
-          <p className="text-slate-400 font-medium max-w-xs text-lg">
-            Вештачката интелигенција ја чита вашата сметка. Ве молиме почекајте.
-          </p>
-          <div className="mt-16 flex gap-3">
-            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-duration:0.6s]"></div>
-            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-delay:0.2s] [animation-duration:0.6s]"></div>
-            <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse [animation-delay:0.4s] [animation-duration:0.6s]"></div>
-          </div>
+          <h2 className="text-2xl font-black mb-2">Обработка...</h2>
+          <p className="text-slate-400 text-sm">Ги подготвуваме податоците од вашата сметка.</p>
         </div>
       )}
 
@@ -265,7 +223,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
           <button onClick={openScanner} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 active:scale-95 transition-all group">
-            <IconCamera className="w-4 h-4 group-hover:rotate-12 transition-transform" /> Скенирај сметка
+            <IconCamera className="w-4 h-4" /> Скенирај QR
           </button>
         </div>
 
@@ -300,7 +258,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         </div>
         {transactions.map(t => {
           const isEditing = editingId === t.id;
-
           return (
             <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4 transition-all hover:bg-slate-50/50">
               <div className="flex items-center gap-4 flex-grow">
@@ -309,70 +266,31 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 </div>
                 <div className="flex-grow">
                   <p className="font-black text-slate-900 text-base group-hover:text-indigo-600 transition-colors">{t.description}</p>
-                  
                   {isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2 animate-fadeIn items-center">
-                      <select 
-                        className="text-[10px] font-black uppercase p-2 border rounded-xl bg-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
-                        value={editMainCat}
-                        onChange={(e) => {
-                          const newMain = e.target.value as MainCategory;
-                          setEditMainCat(newMain);
-                          setEditSubCat(categories[newMain][0] || '');
-                        }}
-                      >
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center">
+                      <select className="text-[10px] font-black p-2 border rounded-xl" value={editMainCat} onChange={(e) => setEditMainCat(e.target.value as MainCategory)}>
                         {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
-                      <select 
-                        className="text-[10px] font-black uppercase p-2 border rounded-xl bg-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
-                        value={editSubCat}
-                        onChange={(e) => setEditSubCat(e.target.value)}
-                      >
+                      <select className="text-[10px] font-black p-2 border rounded-xl" value={editSubCat} onChange={(e) => setEditSubCat(e.target.value)}>
                         {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
                       </select>
-                      <div className="flex gap-1">
-                        <button onClick={saveEdit} className="text-[10px] font-black text-white uppercase px-4 py-2 bg-indigo-600 rounded-xl shadow-md">ОК</button>
-                        <button 
-                          onClick={() => {
-                            onDeleteTransaction(t.id);
-                            setEditingId(null);
-                          }} 
-                          className="text-[10px] font-black text-red-600 uppercase px-4 py-2 bg-red-50 rounded-xl border border-red-100 hover:bg-red-100 transition-all"
-                        >
-                          Избриши
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 uppercase px-4 py-2 bg-slate-100 rounded-xl">X</button>
-                      </div>
+                      <button onClick={saveEdit} className="text-[10px] font-black text-white px-4 py-2 bg-indigo-600 rounded-xl">ОК</button>
+                      <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-4 py-2 bg-slate-100 rounded-xl">X</button>
                     </div>
                   ) : (
-                    <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 mt-0.5 ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
-                      {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
-                      {!t.isCategorizing && (
-                        <button 
-                          onClick={() => startEditing(t)}
-                          className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all ml-1"
-                        >
-                          <IconEdit className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5 flex items-center gap-2">
+                      {t.subCategory}
+                      <button onClick={() => startEditing(t)} className="opacity-0 group-hover:opacity-100 text-indigo-400"><IconEdit className="w-3.5 h-3.5" /></button>
                     </p>
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between md:justify-end gap-4">
-                <div className={`text-sm font-black whitespace-nowrap px-4 py-2 rounded-xl ${t.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-900'}`}>
-                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} <span className="text-[10px] opacity-60">ден.</span>
-                </div>
+              <div className={`text-sm font-black px-4 py-2 rounded-xl ${t.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-900'}`}>
+                {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} <span className="text-[10px] opacity-60">ден.</span>
               </div>
             </div>
           );
         })}
-        {transactions.length === 0 && (
-          <div className="text-center py-24 opacity-30">
-             <IconTransactions className="w-16 h-16 mx-auto mb-6 text-slate-300" />
-             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Листата е празна</p>
-          </div>
-        )}
       </div>
     </div>
   );
