@@ -11,13 +11,14 @@ interface TransactionViewProps {
   transactions: Transaction[];
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  onDeleteTransaction: (id: string) => void;
   categories: SubCategoryMap;
   members: Member[];
   currentMemberId: string;
 }
 
 const TransactionView: React.FC<TransactionViewProps> = ({ 
-  transactions, onAddTransaction, onUpdateTransaction, categories, members, currentMemberId 
+  transactions, onAddTransaction, onUpdateTransaction, onDeleteTransaction, categories, members, currentMemberId 
 }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -96,7 +97,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     try {
       const result = await analyzeReceiptImage(base64, categories);
       if (result) {
-        // АВТОМАТСКО ВНЕСУВАЊЕ - нема веќе потреба од клик на Додади
         onAddTransaction({
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
@@ -109,7 +109,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           isCategorizing: false
         });
         
-        // Ресетирај форма (за секој случај)
         setDescription('');
         setAmount('');
         setSelectedMainCat('AI');
@@ -195,23 +194,19 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            {/* ВИЗУЕЛЕН НИШАН (Viewfinder) */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className={`relative w-64 h-64 border-2 border-white/20 transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/10 scale-105' : 'bg-black/10'}`}>
-                {/* Агли на нишанот */}
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-indigo-500 -translate-x-1 -translate-y-1"></div>
                 <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-indigo-500 translate-x-1 -translate-y-1"></div>
                 <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-indigo-500 -translate-x-1 translate-y-1"></div>
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-indigo-500 translate-x-1 translate-y-1"></div>
                 
-                {/* Текст над нишанот */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-12 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10">
                    <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] whitespace-nowrap">
                     {isQrFound ? '✅ ПРОЧИТАНО!' : 'НИШАНИ КОН QR КОДОТ'}
                    </p>
                 </div>
 
-                {/* Анимирана линија за скенирање */}
                 {!isQrFound && (
                   <div className="absolute inset-x-2 top-0 h-0.5 bg-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.8)] animate-[scanLine_2s_infinite]"></div>
                 )}
@@ -294,7 +289,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                   <p className="font-black text-slate-900 text-base group-hover:text-indigo-600 transition-colors">{t.description}</p>
                   
                   {isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2 animate-fadeIn items-center">
                       <select 
                         className="text-[10px] font-black uppercase p-2 border rounded-xl bg-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
                         value={editMainCat}
@@ -315,6 +310,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                       </select>
                       <div className="flex gap-1">
                         <button onClick={saveEdit} className="text-[10px] font-black text-white uppercase px-4 py-2 bg-indigo-600 rounded-xl shadow-md">ОК</button>
+                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 uppercase px-4 py-2 bg-red-50 rounded-xl border border-red-100 hover:bg-red-100 transition-all">Избриши</button>
                         <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 uppercase px-4 py-2 bg-slate-100 rounded-xl">X</button>
                       </div>
                     </div>
