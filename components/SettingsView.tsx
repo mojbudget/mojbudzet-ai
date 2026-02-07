@@ -48,12 +48,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const startCamera = async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const s = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
       setStream(s);
-      if (videoRef.current) videoRef.current.srcObject = s;
     } catch (err) {
       console.error("Camera access denied", err);
-      alert("Нема пристап до камерата.");
+      alert("Нема пристап до камерата. Ве молиме дозволете пристап за да продолжите.");
       setLinkingMethod('manual');
     }
   };
@@ -66,6 +67,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }
     return () => stopCamera();
   }, [linkingMethod]);
+
+  // Закачување на стримот откако ќе се рендерира видео елементот
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
 
   const captureSkin = () => {
     if (videoRef.current && canvasRef.current) {
@@ -136,7 +144,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         <p className="text-slate-500 font-medium italic mt-2">Менаџирај ги твоите картички и категории.</p>
       </header>
 
-      {/* Банкарска поврзаност */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden">
         <div className="flex items-center justify-between mb-8">
           <h3 className="font-bold text-xl text-slate-800">Твојата картичка</h3>
@@ -238,7 +245,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             {(linkingMethod === 'scan' || linkingMethod === 'skin') && (
               <div className="flex flex-col items-center gap-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
                 <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-inner">
-                  <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className="w-full h-full object-cover" 
+                  />
                   <canvas ref={canvasRef} className="hidden" />
                   <div className="absolute inset-0 border-2 border-dashed border-indigo-400/50 m-4 rounded-xl animate-pulse"></div>
                 </div>
@@ -270,7 +283,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
-      {/* Управување со категории */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
         <h3 className="font-bold text-xl mb-6 text-slate-800 text-center">Управување со поткатегории</h3>
         
