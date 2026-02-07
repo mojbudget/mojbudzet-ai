@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
-import { analyzeQrData, analyzeReceiptImage } from '../services/geminiService';
+import { analyzeQrData, extractQrDataFromImage } from '../services/geminiService';
 import { IconCamera, IconTransactions, IconEdit } from './Icons';
 
 interface TransactionViewProps {
@@ -32,7 +32,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [qrDetectedInRealTime, setQrDetectedInRealTime] = useState(false);
   const [flash, setFlash] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -43,110 +42,71 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   useEffect(() => {
     if (isScannerOpen && stream && videoRef.current) {
       videoRef.current.srcObject = stream;
-      startScanLoop();
     }
-    return () => {
-      if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
-    };
   }, [isScannerOpen, stream]);
-
-  const startScanLoop = () => {
-    const scan = () => {
-      if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        if (canvas.width !== video.videoWidth) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-        }
-
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-          setQrDetectedInRealTime(!!code);
-        }
-      }
-      scanFrameRef.current = requestAnimationFrame(scan);
-    };
-    scanFrameRef.current = requestAnimationFrame(scan);
-  };
 
   const handleCapture = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    // 1. Направи моментална слика
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    
+    // Постави димензии на канвас врз основа на видеото
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Ефект на блиц
+    // Направи слика
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+    
+    // Локална проверка за QR код
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const localQr = jsQR(imageData.data, imageData.width, imageData.height);
+
+    // Визуелен ефект
     setFlash(true);
     setTimeout(() => setFlash(false), 150);
-
-    setIsAnalyzing(true);
     
-    // 2. Земи ги податоците од сликата за QR детекција
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-    // Затвори ја камерата веднаш за да заштедиш ресурси
+    // Прво го затвораме скенерот за да види корисникот дека нешто се случува
     closeScanner();
+    setIsAnalyzing(true);
 
     try {
-      if (code) {
-        // УСПЕШНО НАЈДЕН QR КОД
-        let extractedAmount = 0;
-        try {
-          const url = new URL(code.data.startsWith('http') ? code.data : `https://mojddv.gov.mk/s/qr?${code.data}`);
-          const am = url.searchParams.get('am');
-          if (am) extractedAmount = parseFloat(am);
-        } catch (e) {
-          const match = code.data.match(/am=([\d.]+)/);
-          if (match) extractedAmount = parseFloat(match[1]);
-        }
+      let qrContent = localQr ? localQr.data : null;
 
-        const aiResult = await analyzeQrData(code.data, categories);
-        onAddTransaction({
-          id: Math.random().toString(36).substr(2, 9),
-          date: new Date().toISOString(),
-          description: aiResult?.description || 'Скенирана сметка (QR)',
-          amount: -Math.abs(extractedAmount || 0),
-          mainCategory: (aiResult?.mainCategory as MainCategory) || MainCategory.NEEDS,
-          subCategory: aiResult?.subCategory || 'Друго',
-          type: 'expense',
-          memberId: currentMemberId,
-          isCategorizing: false
-        });
-      } else {
-        // QR КОДОТ НЕ Е НАЈДЕН - ПРАТИ СЛИКА НА AI АНАЛИЗА (Сликата ја „гледа“ AI)
-        const result = await analyzeReceiptImage(base64Image, categories);
-        if (result) {
-          onAddTransaction({
-            id: Math.random().toString(36).substr(2, 9),
-            date: new Date().toISOString(),
-            description: result.description,
-            amount: -Math.abs(result.amount),
-            mainCategory: result.mainCategory as MainCategory,
-            subCategory: result.subCategory,
-            type: 'expense',
-            memberId: currentMemberId,
-            isCategorizing: false
-          });
-        } else {
-          throw new Error("Неуспешна анализа");
-        }
+      // Ако локалниот скенер не најде ништо, прашај го Gemini да го најде QR кодот
+      if (!qrContent) {
+        qrContent = await extractQrDataFromImage(base64Image);
       }
+
+      if (!qrContent) {
+        throw new Error("Не е пронајден QR код");
+      }
+
+      // Екстракција на износ (am=)
+      let extractedAmount = 0;
+      const amMatch = qrContent.match(/am=([\d.]+)/);
+      if (amMatch) extractedAmount = parseFloat(amMatch[1]);
+
+      // Анализа и категоризација
+      const aiResult = await analyzeQrData(qrContent, categories);
+      
+      onAddTransaction({
+        id: Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString(),
+        description: aiResult?.description || 'Трансакција од QR',
+        amount: -Math.abs(extractedAmount || 0),
+        mainCategory: (aiResult?.mainCategory as MainCategory) || MainCategory.NEEDS,
+        subCategory: aiResult?.subCategory || 'Друго',
+        type: 'expense',
+        memberId: currentMemberId,
+        isCategorizing: false
+      });
+
     } catch (err) {
-      alert("Не успеавме да ја прочитаме сметката. Ве молиме обидете се повторно со појасна слика или внесете рачно.");
+      alert("Не успеавме да го прочитаме QR кодот на оваа слика. Пробајте повторно со подобар фокус.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -159,9 +119,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       });
       setStream(s);
       setIsScannerOpen(true);
-      setQrDetectedInRealTime(false);
     } catch (err) {
-      alert("Нема пристап до камерата.");
+      alert("Нема пристап до камерата. Дозволете пристап во подесувањата.");
     }
   };
 
@@ -171,7 +130,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       setStream(null);
     }
     setIsScannerOpen(false);
-    if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -214,17 +172,15 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
-          {flash && <div className="absolute inset-0 z-[105] bg-white animate-pulse"></div>}
+          {flash && <div className="absolute inset-0 z-[105] bg-white"></div>}
 
-          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-colors duration-500 ${qrDetectedInRealTime ? 'border-green-500' : 'border-slate-800'}`}>
+          <div className="relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 border-slate-800">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
             <div className="absolute inset-x-0 top-12 flex justify-center pointer-events-none px-6">
-                <div className={`bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border transition-all duration-300 flex items-center gap-3 ${qrDetectedInRealTime ? 'scale-110 border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
-                   <p className="text-[12px] font-black uppercase tracking-[0.2em]">
-                    {qrDetectedInRealTime ? '✅ QR КОДОТ Е ВО ФОКУС' : 'НАСОЧЕТЕ КОН СМЕТКАТА'}
-                   </p>
+                <div className="bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border border-white/10 text-white flex items-center gap-3">
+                   <p className="text-[12px] font-black uppercase tracking-[0.2em]">НАСОЧЕТЕ КОН QR КОДОТ</p>
                 </div>
             </div>
           </div>
@@ -235,7 +191,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
               className="w-full py-7 rounded-[2.5rem] bg-indigo-600 text-white font-black uppercase text-sm shadow-2xl transition-all active:scale-90 flex items-center justify-center gap-3"
             >
               <IconCamera className="w-6 h-6" />
-              СКЕНИРАЈ СЕГА
+              ФОТОГРАФИРАЈ QR
             </button>
             <button onClick={closeScanner} className="w-full py-4 text-white/30 font-black uppercase text-[11px] tracking-[0.3em]">Прекини</button>
           </div>
@@ -250,9 +206,9 @@ const TransactionView: React.FC<TransactionViewProps> = ({
               <IconTransactions className="w-12 h-12 text-white" />
             </div>
           </div>
-          <h2 className="text-3xl font-black mb-3">Се анализира...</h2>
+          <h2 className="text-3xl font-black mb-3">Се чита QR кодот...</h2>
           <p className="text-slate-400 text-base font-medium max-w-[260px]">
-            Вештачката интелигенција ги чита податоците во позадина. Ве молиме почекајте.
+            Го анализираме кодот за да ги извлечеме податоците за вашата трансакција.
           </p>
           <div className="mt-12 flex gap-2">
             {[0, 1, 2].map(i => (
@@ -266,7 +222,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="flex justify-between items-center mb-6 px-2">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
           <button onClick={openScanner} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 active:scale-95 transition-all group">
-            <IconCamera className="w-4 h-4" /> Скенирај сметка
+            <IconCamera className="w-4 h-4" /> Скенирај QR
           </button>
         </div>
 
