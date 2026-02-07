@@ -7,7 +7,8 @@ import BudgetView from './components/BudgetView';
 import RemindersView from './components/RemindersView';
 import GoalsView from './components/GoalsView';
 import SettingsView from './components/SettingsView';
-import { Transaction, Budget, MainCategory, Reminder, SubCategoryMap, FinancialGoal, CardInfo, Member, AICategorizationResponse } from './types';
+import AuthView from './components/AuthView';
+import { Transaction, Budget, MainCategory, Reminder, SubCategoryMap, FinancialGoal, CardInfo, Member } from './types';
 import { INITIAL_TRANSACTIONS, INITIAL_BUDGETS, INITIAL_CATEGORIES as DefaultSubs } from './constants';
 import { getFinancialAdvice, categorizeTransactionsBatch, suggestBudget } from './services/geminiService';
 
@@ -18,6 +19,7 @@ const App: React.FC = () => {
     try { return JSON.parse(saved); } catch (e) { return defaultValue; }
   };
 
+  const [user, setUser] = useState<string | null>(() => localStorage.getItem('user'));
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>(() => getSavedData('transactions', INITIAL_TRANSACTIONS));
   const [budgets, setBudgets] = useState<Budget[]>(() => getSavedData('budgets', INITIAL_BUDGETS));
@@ -52,7 +54,12 @@ const App: React.FC = () => {
     localStorage.setItem('cardInfo', JSON.stringify(cardInfo));
     localStorage.setItem('householdName', JSON.stringify(householdName));
     localStorage.setItem('members', JSON.stringify(members));
-  }, [transactions, budgets, reminders, financialGoals, categories, isBankConnected, cardInfo, householdName, members]);
+    if (user) localStorage.setItem('user', user);
+  }, [transactions, budgets, reminders, financialGoals, categories, isBankConnected, cardInfo, householdName, members, user]);
+
+  const handleLogin = (username: string) => {
+    setUser(username);
+  };
 
   const completeOnboarding = async (useAi: boolean) => {
     const incomeValue = parseFloat(tempIncome.replace(/\D/g, ''));
@@ -136,6 +143,10 @@ const App: React.FC = () => {
     fetchAdvice();
   }, [transactions.length]);
 
+  if (!user) {
+    return <AuthView onLogin={handleLogin} />;
+  }
+
   if (isOnboarding) {
     return (
       <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 font-sans">
@@ -145,7 +156,7 @@ const App: React.FC = () => {
           </div>
           {onboardingStep === 1 ? (
             <div className="space-y-6">
-              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде!</h2>
+              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде, {user}!</h2>
               <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход.</p>
               <input 
                 type="text" 
