@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
 import { analyzeReceiptImage } from '../services/geminiService';
@@ -29,15 +30,21 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isQrFound, setIsQrFound] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const scanFrameRef = useRef<number>(0);
 
-  // Осигуруваме дека видеото ќе се прикаже откако ќе се монтира елементот
   useEffect(() => {
     if (isScannerOpen && stream && videoRef.current) {
       videoRef.current.srcObject = stream;
+      startScanLoop();
     }
+    return () => {
+      if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
+    };
   }, [isScannerOpen, stream]);
 
   useEffect(() => {
@@ -50,9 +57,60 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     }
   }, [selectedMainCat, categories]);
 
+  const startScanLoop = () => {
+    const scan = () => {
+      if (!videoRef.current || !canvasRef.current || isAnalyzing || isQrFound) return;
+      
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
+          if (code) {
+            setIsQrFound(true);
+            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            processCapturedReceipt(base64);
+          }
+        }
+      }
+      scanFrameRef.current = requestAnimationFrame(scan);
+    };
+    scanFrameRef.current = requestAnimationFrame(scan);
+  };
+
+  const processCapturedReceipt = async (base64: string) => {
+    setIsAnalyzing(true);
+    // Веднаш гасиме камера како кај Мој ДДВ
+    closeScanner();
+    
+    try {
+      const result = await analyzeReceiptImage(base64, categories);
+      if (result) {
+        setDescription(result.description);
+        setAmount(result.amount.toString());
+        setSelectedMainCat(result.mainCategory);
+        setSubCategory(result.subCategory);
+      }
+    } catch (err) {
+      alert("Неуспешно читање. Ве молиме внесете ги податоците рачно.");
+    } finally {
+      setIsAnalyzing(false);
+      setIsQrFound(false);
+    }
+  };
+
   const openScanner = async () => {
     try {
-      // Бараме дозвола пред да го отвориме UI за да бидеме сигурни
       const s = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
@@ -62,9 +120,9 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       });
       setStream(s);
       setIsScannerOpen(true);
+      setIsQrFound(false);
     } catch (err) {
-      console.error("Camera access error:", err);
-      alert("Нема пристап до камерата. Ве молиме дозволете пристап во подесувањата на прелистувачот.");
+      alert("Дозволете пристап до камерата за скенирање.");
     }
   };
 
@@ -74,37 +132,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       setStream(null);
     }
     setIsScannerOpen(false);
-  };
-
-  const captureAndAnalyze = async () => {
-    if (!videoRef.current || !canvasRef.current || !stream) return;
-    
-    setIsAnalyzing(true);
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(video, 0, 0);
-      const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-      
-      try {
-        const result = await analyzeReceiptImage(base64, categories);
-        if (result) {
-          setDescription(result.description);
-          setAmount(result.amount.toString());
-          setSelectedMainCat(result.mainCategory);
-          setSubCategory(result.subCategory);
-          closeScanner();
-        }
-      } catch (err) {
-        alert("Грешка при читање. Обидете се со подобра осветленост или рачен внес.");
-      } finally {
-        setIsAnalyzing(false);
-      }
-    }
+    if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -150,39 +178,51 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
-          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl rounded-b-3xl">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted
-              className="w-full h-full object-cover" 
-            />
+          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none">
-              <div className="w-full h-full border-2 border-dashed border-indigo-400 rounded-3xl animate-pulse"></div>
-            </div>
-            {isAnalyzing && (
-              <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center">
-                <div className="w-12 h-12 border-4 border-white border-t-indigo-500 rounded-full animate-spin mb-4"></div>
-                <p className="text-xs font-black uppercase tracking-widest leading-relaxed">Вештачката интелигенција ја чита сметката...</p>
+            
+            {/* Скенер оверлеј */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className={`w-64 h-64 border-2 rounded-[2rem] transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/20 scale-110' : 'border-white/30 bg-white/5'}`}>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full">
+                   <p className="text-[10px] font-black text-white uppercase tracking-widest whitespace-nowrap">
+                    {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR кодот'}
+                   </p>
+                </div>
+                {/* Анимирана линија за скенирање */}
+                {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-[scanLine_2s_infinite]"></div>}
               </div>
-            )}
+            </div>
+            
+            <style>{`
+              @keyframes scanLine {
+                0% { top: 10%; opacity: 0; }
+                50% { opacity: 1; }
+                100% { top: 90%; opacity: 0; }
+              }
+            `}</style>
           </div>
-          <div className="p-8 flex gap-4 w-full max-w-md">
-            <button 
-              onClick={captureAndAnalyze} 
-              disabled={isAnalyzing} 
-              className="flex-grow py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-transform disabled:opacity-50"
-            >
-              Скенирај
+          
+          <div className="p-8 w-full max-w-md">
+            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10 active:scale-95 transition-all">
+              Затвори камера
             </button>
-            <button 
-              onClick={closeScanner} 
-              className="px-8 py-5 bg-white/10 text-white rounded-2xl font-black uppercase text-xs backdrop-blur-md"
-            >
-              Затвори
-            </button>
+          </div>
+        </div>
+      )}
+
+      {isAnalyzing && (
+        <div className="fixed inset-0 z-[110] bg-indigo-600 flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
+          <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
+            <IconCamera className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-black tracking-tight mb-2">Обработка на податоци...</h2>
+          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI го анализира продавачот и износот од сметката.</p>
+          <div className="mt-12 flex gap-1">
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.2s]"></div>
+            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.4s]"></div>
           </div>
         </div>
       )}
@@ -190,8 +230,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
-          <button onClick={openScanner} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[9px] uppercase tracking-widest border border-indigo-100 active:scale-95 transition-transform">
-            <IconCamera className="w-3 h-3" /> Скенирај сметка
+          <button onClick={openScanner} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-indigo-100 active:scale-95 transition-all">
+            <IconCamera className="w-3.5 h-3.5" /> Скенирај QR
           </button>
         </div>
 
@@ -202,7 +242,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           </div>
           
           <div className="flex flex-col md:flex-row gap-3">
-            <input type="text" placeholder="Опис на трансакција" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-900 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input type="text" placeholder="Опис / Продавач" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-900 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
             <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-black text-slate-900" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
           </div>
 
@@ -216,7 +256,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             </select>
           </div>
 
-          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">Додади</button>
+          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">Додади во листа</button>
         </form>
       </div>
 
