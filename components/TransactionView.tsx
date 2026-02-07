@@ -82,7 +82,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
             if (code) {
               setIsQrFound(true);
-              // Не сликаме автоматски, само го информираме корисникот дека QR кодот е во фокус
             } else {
               setIsQrFound(false);
             }
@@ -100,7 +99,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     if (canvasRef.current && videoRef.current) {
       const finalCtx = canvasRef.current.getContext('2d');
       if (finalCtx) {
-        // Сними го тековниот фрејм
         finalCtx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
         const base64 = canvasRef.current.toDataURL('image/jpeg', 0.9).split(',')[1];
         processCapturedReceipt(base64);
@@ -211,37 +209,30 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
-          <div className="relative w-full flex-grow overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
+          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem] border-b-8 transition-colors duration-300 ${isQrFound ? 'border-green-500' : 'border-transparent'}`}>
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className={`relative w-64 h-64 border-2 transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/10 scale-105' : 'border-white/20 bg-black/10'}`}>
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-indigo-500 -translate-x-1 -translate-y-1"></div>
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-indigo-500 translate-x-1 -translate-y-1"></div>
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-indigo-500 -translate-x-1 translate-y-1"></div>
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-indigo-500 translate-x-1 translate-y-1"></div>
-                
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-12 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10">
-                   <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] whitespace-nowrap">
-                    {isQrFound ? '✅ QR КОДОТ Е ТУКА! СЛИКАЈ' : 'НИШАНИ КОН QR КОДОТ'}
+            <div className="absolute inset-x-0 top-0 p-8 flex justify-center pointer-events-none">
+                <div className={`bg-black/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/10 transition-all duration-300 ${isQrFound ? 'scale-110 border-green-500/50' : ''}`}>
+                   <p className={`text-[11px] font-black uppercase tracking-[0.2em] whitespace-nowrap ${isQrFound ? 'text-green-400' : 'text-white'}`}>
+                    {isQrFound ? '✅ QR КОДОТ Е ДЕТЕКТИРАН!' : 'СНИМИ ГИ ПОДАТОЦИТЕ ОД СМЕТКАТА'}
                    </p>
                 </div>
-
-                {!isAnalyzing && (
-                  <div className="absolute inset-x-2 top-0 h-0.5 bg-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.8)] animate-[scanLine_2s_infinite]"></div>
-                )}
-              </div>
             </div>
+
+            {isQrFound && (
+               <div className="absolute inset-0 border-[16px] border-green-500/20 pointer-events-none animate-pulse"></div>
+            )}
           </div>
           
           <div className="p-8 w-full max-w-md flex flex-col gap-4 bg-black">
             <button 
               onClick={captureManual} 
-              className="w-full py-6 bg-white text-black rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+              className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isQrFound ? 'bg-green-500 text-white' : 'bg-white text-black'}`}
             >
-              <div className="w-4 h-4 rounded-full border-4 border-black animate-pulse"></div>
-              СЛИКАЈ СМЕТКА
+              <IconCamera className="w-5 h-5" />
+              СЛИКАЈ СЕГА
             </button>
             <button 
               onClick={closeScanner} 
@@ -383,15 +374,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           </div>
         )}
       </div>
-
-      <style>{`
-        @keyframes scanLine {
-          0% { top: 5%; opacity: 0; }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { top: 95%; opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 };
