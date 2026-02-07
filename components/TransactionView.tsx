@@ -96,10 +96,22 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     try {
       const result = await analyzeReceiptImage(base64, categories);
       if (result) {
-        setDescription(result.description);
-        setAmount(result.amount.toString());
-        setSelectedMainCat(result.mainCategory);
-        setSubCategory(result.subCategory);
+        // Автоматско внесување на трансакцијата
+        onAddTransaction({
+          id: Math.random().toString(36).substr(2, 9),
+          date: new Date().toISOString(),
+          description: result.description,
+          amount: -Math.abs(result.amount), // Сметките се секогаш трошоци
+          mainCategory: result.mainCategory as MainCategory,
+          subCategory: result.subCategory,
+          type: 'expense',
+          memberId: currentMemberId
+        });
+        
+        // Ресетирање на формата ако имало нешто внесено
+        setDescription(''); 
+        setAmount(''); 
+        setSelectedMainCat('AI');
       }
     } catch (err) {
       alert("Неуспешно читање. Ве молиме внесете ги податоците рачно.");
@@ -217,8 +229,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
             <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight mb-2">Обработка на податоци...</h2>
-          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI го анализира продавачот и износот од сметката.</p>
+          <h2 className="text-2xl font-black tracking-tight mb-2">Автоматско внесување...</h2>
+          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI ги обработува податоците. Трансакцијата ќе биде додадена веднаш.</p>
           <div className="mt-12 flex gap-1">
             <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
             <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.2s]"></div>
