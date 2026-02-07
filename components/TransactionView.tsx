@@ -1,14 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore
-import * as jsQRModule from 'jsqr';
+import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
 import { analyzeReceiptImage } from '../services/geminiService';
 import { IconCamera, IconTransactions, IconEdit } from './Icons';
-
-// Поправка за ESM импорт на jsQR
-const jsQR = (jsQRModule as any).default || jsQRModule;
 
 interface TransactionViewProps {
   transactions: Transaction[];
@@ -85,11 +82,20 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
             if (code) {
               setIsQrFound(true);
-              const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-              processCapturedReceipt(base64);
+              // Додаваме мало задоцнување за да овозможиме автофокус на камерата
+              setTimeout(() => {
+                if (canvasRef.current && videoRef.current) {
+                  const finalCtx = canvasRef.current.getContext('2d');
+                  if (finalCtx) {
+                    finalCtx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+                    const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
+                    processCapturedReceipt(base64);
+                  }
+                }
+              }, 350);
             }
           } catch (e) {
-            console.error("QR Scan error:", e);
+            console.error("Scanner Error:", e);
           }
         }
       }
@@ -120,9 +126,12 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         setDescription('');
         setAmount('');
         setSelectedMainCat('AI');
+      } else {
+        throw new Error("Empty result");
       }
     } catch (err) {
-      alert("Неуспешно читање. Пробајте повторно или внесете рачно.");
+      console.error("Receipt Processing Failed:", err);
+      alert("Неуспешно читање на сметката. Обидете се со подобра светлина или внесете ги податоците рачно.");
     } finally {
       setIsAnalyzing(false);
       setIsQrFound(false);
@@ -134,15 +143,15 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       const s = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1920 }, // Зголемена резолуција за подобар OCR
+          height: { ideal: 1080 }
         } 
       });
       setStream(s);
       setIsScannerOpen(true);
       setIsQrFound(false);
     } catch (err) {
-      alert("Дозволете пристап до камерата.");
+      alert("Овозможете пристап до камерата за да скенирате сметки.");
     }
   };
 
@@ -211,7 +220,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-12 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10">
                    <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] whitespace-nowrap">
-                    {isQrFound ? '✅ ПРОЧИТАНО!' : 'НИШАНИ КОН QR КОДОТ'}
+                    {isQrFound ? '✅ СКЕНИРАНО! ПОЧЕКАЈ...' : 'НИШАНИ КОН QR КОДОТ'}
                    </p>
                 </div>
 
@@ -224,7 +233,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           
           <div className="p-10 w-full max-w-md">
             <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10 active:scale-95 transition-all">
-              Прекини скенирање
+              Прекини
             </button>
           </div>
         </div>
@@ -235,9 +244,9 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           <div className="w-24 h-24 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-10 animate-pulse border border-white/20">
             <IconCamera className="w-12 h-12 text-white" />
           </div>
-          <h2 className="text-3xl font-black tracking-tight mb-4">Автоматско внесување...</h2>
+          <h2 className="text-3xl font-black tracking-tight mb-4">Анализирам сметка...</h2>
           <p className="text-indigo-100 font-medium opacity-80 max-w-xs text-lg">
-            AI ги чита податоците од сметката. Трансакцијата ќе се појави веднаш во листата.
+            Вештачката интелигенција ги чита податоците.
           </p>
           <div className="mt-16 flex gap-2">
             <div className="w-3 h-3 bg-white rounded-full animate-bounce [animation-duration:0.6s]"></div>
