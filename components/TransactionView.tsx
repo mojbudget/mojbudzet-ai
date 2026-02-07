@@ -33,11 +33,13 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qrData, setQrData] = useState<string | null>(null);
+  const [flash, setFlash] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const scanFrameRef = useRef<number>(0);
+  const lastQrFoundTime = useRef<number>(0);
 
   useEffect(() => {
     if (isScannerOpen && stream && videoRef.current) {
@@ -56,17 +58,26 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       const canvas = canvasRef.current;
       
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        // Оптимизација: Не поставувај димензии секој фрејм ако не се променети
+        if (canvas.width !== video.videoWidth) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+          
           if (code) {
             setQrData(code.data);
+            lastQrFoundTime.current = Date.now();
           } else {
-            setQrData(null);
+            // „Леплива“ детекција: ако го изгубиме кодот, чекаме 1.5 секунди пред да го избришеме qrData
+            if (Date.now() - lastQrFoundTime.current > 1500) {
+              setQrData(null);
+            }
           }
         }
       }
@@ -77,21 +88,32 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const handleCaptureQr = async () => {
     if (!qrData) return;
+    
+    // Ефект на блиц
+    setFlash(true);
+    setTimeout(() => setFlash(false), 150);
+    
     setIsAnalyzing(true);
     
     // Екстракција на износ од македонска сметка (am= параметар во URL)
     let extractedAmount = 0;
     try {
-      const url = new URL(qrData);
-      const am = url.searchParams.get('am');
-      if (am) extractedAmount = parseFloat(am);
+      if (qrData.includes('am=')) {
+        const url = new URL(qrData.startsWith('http') ? qrData : `https://mojddv.gov.mk/s/qr?${qrData}`);
+        const am = url.searchParams.get('am');
+        if (am) extractedAmount = parseFloat(am);
+      }
     } catch (e) {
-      // Ако не е URL, бараме бројки со regex
       const match = qrData.match(/am=([\d.]+)/);
       if (match) extractedAmount = parseFloat(match[1]);
     }
 
-    closeScanner();
+    // Го затвораме стримот веднаш по „сликањето“
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsScannerOpen(false);
 
     try {
       const aiResult = await analyzeQrData(qrData, categories);
@@ -99,7 +121,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       onAddTransaction({
         id: Math.random().toString(36).substr(2, 9),
         date: new Date().toISOString(),
-        description: aiResult?.description || 'Скенирана сметка',
+        description: aiResult?.description || 'Трансакција од QR',
         amount: -Math.abs(extractedAmount || 0),
         mainCategory: (aiResult?.mainCategory as MainCategory) || MainCategory.NEEDS,
         subCategory: aiResult?.subCategory || 'Друго',
@@ -108,7 +130,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         isCategorizing: false
       });
     } catch (err) {
-      alert("Грешка при обработка на QR кодот.");
+      console.error(err);
+      alert("Се случи грешка при анализата. Обидете се рачно.");
     } finally {
       setIsAnalyzing(false);
       setQrData(null);
@@ -122,8 +145,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       });
       setStream(s);
       setIsScannerOpen(true);
+      setQrData(null);
+      lastQrFoundTime.current = 0;
     } catch (err) {
-      alert("Нема пристап до камерата.");
+      alert("Овозможете пристап до камерата во подесувањата на прелистувачот.");
     }
   };
 
@@ -134,6 +159,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     }
     setIsScannerOpen(false);
     if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
+    setQrData(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -176,51 +202,66 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between">
-          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-colors duration-300 ${qrData ? 'border-green-500' : 'border-slate-800'}`}>
+          {/* Flash Effect Overlay */}
+          {flash && <div className="absolute inset-0 z-[105] bg-white animate-pulse"></div>}
+
+          <div className={`relative w-full flex-grow overflow-hidden bg-slate-900 border-b-8 transition-all duration-500 ${qrData ? 'border-green-500' : 'border-slate-800'}`}>
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            <div className="absolute inset-x-0 top-10 flex justify-center pointer-events-none">
-                <div className={`bg-black/60 backdrop-blur-xl px-6 py-3 rounded-full border transition-all ${qrData ? 'scale-110 border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
-                   <p className="text-[11px] font-black uppercase tracking-[0.2em]">
-                    {qrData ? '✅ QR КОДОТ Е ДЕТЕКТИРАН!' : 'НАСОЧЕТЕ КОН QR КОДОТ'}
+            <div className="absolute inset-x-0 top-12 flex justify-center pointer-events-none px-6">
+                <div className={`bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border transition-all duration-300 flex items-center gap-3 ${qrData ? 'scale-110 border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'border-white/10'}`}>
+                   {qrData && <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>}
+                   <p className={`text-[12px] font-black uppercase tracking-[0.2em] ${qrData ? 'text-green-400' : 'text-white'}`}>
+                    {qrData ? '✅ QR КОДОТ Е ФИКСИРАН' : 'НАСОЧЕТЕ КОН QR КОДОТ'}
                    </p>
                 </div>
             </div>
 
             {qrData && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                 <div className="w-48 h-48 border-4 border-green-500 rounded-3xl animate-pulse shadow-[0_0_50px_rgba(34,197,94,0.5)]"></div>
+                 <div className="w-64 h-64 border-2 border-green-500/50 rounded-[3rem] animate-pulse">
+                    <div className="absolute inset-0 bg-green-500/5 rounded-[3rem]"></div>
+                 </div>
               </div>
             )}
           </div>
           
-          <div className="p-8 w-full max-w-md bg-black">
+          <div className="p-10 w-full max-w-md bg-black flex flex-col gap-4">
             <button 
-              disabled={!qrData}
               onClick={handleCaptureQr} 
-              className={`w-full py-6 rounded-[2rem] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${qrData ? 'bg-green-500 text-white' : 'bg-slate-800 text-slate-500'}`}
+              className={`w-full py-7 rounded-[2.5rem] font-black uppercase text-sm shadow-2xl transition-all duration-300 flex items-center justify-center gap-3 active:scale-90 ${qrData ? 'bg-green-500 text-white shadow-green-500/20 animate-bounce-subtle' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
             >
-              <IconCamera className="w-5 h-5" />
+              <IconCamera className="w-6 h-6" />
               ПРОЧИТАЈ QR КОД
             </button>
-            <button onClick={closeScanner} className="w-full py-4 text-white/30 font-black uppercase text-[10px] tracking-widest mt-2">Прекини</button>
+            <button onClick={closeScanner} className="w-full py-4 text-white/30 font-black uppercase text-[11px] tracking-[0.3em]">Прекини</button>
           </div>
         </div>
       )}
 
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
-          <div className="w-20 h-20 bg-green-500 rounded-[2rem] flex items-center justify-center mb-6 animate-bounce">
-            <IconTransactions className="w-10 h-10 text-white" />
+        <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
+          <div className="relative mb-8">
+            <div className="absolute inset-0 bg-green-500 blur-2xl opacity-20 animate-pulse"></div>
+            <div className="relative w-24 h-24 bg-green-500 rounded-[2.5rem] flex items-center justify-center shadow-2xl">
+              <IconTransactions className="w-12 h-12 text-white" />
+            </div>
           </div>
-          <h2 className="text-2xl font-black mb-2">Обработка...</h2>
-          <p className="text-slate-400 text-sm">Ги подготвуваме податоците од вашата сметка.</p>
+          <h2 className="text-3xl font-black mb-3 tracking-tight">Се обработува...</h2>
+          <p className="text-slate-400 text-base font-medium max-w-[240px] leading-relaxed">
+            Вештачката интелигенција ги категоризира податоците од сметката.
+          </p>
+          <div className="mt-12 flex gap-2">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-2.5 h-2.5 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}></div>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 px-2">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
           <button onClick={openScanner} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 active:scale-95 transition-all group">
             <IconCamera className="w-4 h-4" /> Скенирај QR
@@ -292,6 +333,16 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           );
         })}
       </div>
+
+      <style>{`
+        @keyframes bounce-subtle {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        .animate-bounce-subtle {
+          animation: bounce-subtle 2s infinite ease-in-out;
+        }
+      `}</style>
     </div>
   );
 };
