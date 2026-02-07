@@ -4,23 +4,21 @@ import { MainCategory, SubCategoryMap, AICategorizationResponse, AISuggestedBudg
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_INSTRUCTION = `Ти си врвен македонски финансиски експерт за класификација на трошоци. 
-Твојата единствена задача е да ги мапираш описите на трансакциите во правилни категории.
+const SYSTEM_INSTRUCTION = `Ти си врвен македонски финансиски експерт за класификација на трошоци и детална анализа на македонски фискални сметки.
 
-СТРОГИ ПРАВИЛА (БЕЗ ИСКЛУЧОЦИ):
-1. КАТЕГОРИЈА "Потреби" (MainCategory.NEEDS):
-   - СИТЕ МЕСЕЧНИ СМЕТКИ: Струја (EVN), Вода (Vodovod), Парно (BEG, ESM), Интернет и ТВ (Telekom, A1, Neotel, Telekabel).
-   - СИТЕ СУПЕРМАРКЕТИ: Tinex, KAM, Vero, Ramstore, Zito, Kipper, Stokmak, Reptil.
-   - ТРАНСПОРТ: Makpetrol, Lukoil, Okta, Taxi, JSP.
-   - ЗДРАВЈЕ: Аптеки (Zegin, Eurofarm), болници, лаборатории.
+Твојата задача е да извлечеш податоци со 100% точност.
 
-2. КАТЕГОРИЈА "Желби" (MainCategory.WANTS):
-   - РЕСТОРАНИ И БРЗА ХРАНА: Pizza (Jakomo, Domino, Hot Slice), Sedmica, Burger King, KFC, Vili.
-   - КАФУЛИЊА: Секое кафе или бар.
-   - ЗАБАВА И ШОПИНГ: Кино, гардероба (Zara, H&M), козметика, хоби.
+СТРОГИ ПРАВИЛА ЗА ПРЕПОЗНАВАЊЕ НА ПРОДАВАЧ:
+1. ЗАГЛАВИЕ: Името на продавачот секогаш барај го во НАЈГОРНИОТ дел од сметката (заглавието).
+2. ПРЕЦИЗНОСТ: Мора да правиш разлика меѓу брендови. Ако на сметката пишува "KIT-GO", не смееш да го класифицираш како "KAM". Ако пишува "ZITO", запиши "Жито".
+3. ЛИСТА НА ПОЗНАТИ МАРКЕТИ: Tinex (Тинекс), KAM (Кам), Vero (Веро), Ramstore (Рамстор), Zito (Жито), Kipper (Кипер), Stokmak (Стокомак), Reptil (Рептил), KIT-GO (Кит-Го), Mis (Мис), Tuš (Туш).
 
-3. ФОРМАТ: Враќај резултати исклучиво како валиден JSON. Користи ги имињата на категориите точно како што се дадени.
-ЈАЗИК: Секогаш користи македонски јазик.`;
+ПРАВИЛА ЗА КАТЕГОРИЗАЦИЈА:
+- "Потреби" (MainCategory.NEEDS): Сите горенаведени маркети, сметки (EVN, Vodovod), гориво (Makpetrol, Lukoil), аптеки.
+- "Желби" (MainCategory.WANTS): Ресторани, кафулиња, облека, кино, технологија.
+
+ФОРМАТ: Исклучиво валиден JSON. 
+ЈАЗИК: Македонски.`;
 
 export const categorizeTransactionsBatch = async (
   items: { id: string; description: string }[], 
@@ -71,7 +69,7 @@ export const analyzeReceiptImage = async (base64Image: string, customCategories:
       contents: {
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-          { text: `Анализирај ја фискалната сметка и категоризирај според: ${JSON.stringify(customCategories)}. Сметките МОРА да бидат Потреби!` }
+          { text: `АНАЛИЗИРАЈ ГОРЕН ДЕЛ: Кое е ТОЧНОТО име на маркетот од заглавието? Сума? Категорија според: ${JSON.stringify(customCategories)}.` }
         ]
       },
       config: {
@@ -80,8 +78,8 @@ export const analyzeReceiptImage = async (base64Image: string, customCategories:
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            description: { type: Type.STRING },
-            amount: { type: Type.NUMBER },
+            description: { type: Type.STRING, description: "Точното име на брендот/продавницата од заглавието на сметката" },
+            amount: { type: Type.NUMBER, description: "Вкупниот износ за плаќање" },
             mainCategory: { type: Type.STRING },
             subCategory: { type: Type.STRING },
           },
