@@ -7,8 +7,7 @@ import BudgetView from './components/BudgetView';
 import RemindersView from './components/RemindersView';
 import GoalsView from './components/GoalsView';
 import SettingsView from './components/SettingsView';
-import AuthView from './components/AuthView';
-import { Transaction, Budget, MainCategory, Reminder, SubCategoryMap, FinancialGoal, CardInfo, Member } from './types';
+import { Transaction, Budget, MainCategory, Reminder, SubCategoryMap, FinancialGoal, CardInfo, Member, AICategorizationResponse } from './types';
 import { INITIAL_TRANSACTIONS, INITIAL_BUDGETS, INITIAL_CATEGORIES as DefaultSubs } from './constants';
 import { getFinancialAdvice, categorizeTransactionsBatch, suggestBudget } from './services/geminiService';
 
@@ -19,7 +18,6 @@ const App: React.FC = () => {
     try { return JSON.parse(saved); } catch (e) { return defaultValue; }
   };
 
-  const [user, setUser] = useState<string | null>(() => localStorage.getItem('user'));
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>(() => getSavedData('transactions', INITIAL_TRANSACTIONS));
   const [budgets, setBudgets] = useState<Budget[]>(() => getSavedData('budgets', INITIAL_BUDGETS));
@@ -54,12 +52,7 @@ const App: React.FC = () => {
     localStorage.setItem('cardInfo', JSON.stringify(cardInfo));
     localStorage.setItem('householdName', JSON.stringify(householdName));
     localStorage.setItem('members', JSON.stringify(members));
-    if (user) localStorage.setItem('user', user);
-  }, [transactions, budgets, reminders, financialGoals, categories, isBankConnected, cardInfo, householdName, members, user]);
-
-  const handleLogin = (username: string) => {
-    setUser(username);
-  };
+  }, [transactions, budgets, reminders, financialGoals, categories, isBankConnected, cardInfo, householdName, members]);
 
   const completeOnboarding = async (useAi: boolean) => {
     const incomeValue = parseFloat(tempIncome.replace(/\D/g, ''));
@@ -108,12 +101,6 @@ const App: React.FC = () => {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    if (confirm("Дали сте сигурни дека сакате да ја избришете трансакцијата?")) {
-      setTransactions(prev => prev.filter(t => t.id !== id));
-    }
-  };
-
   const totalIncomeForMonth = useMemo(() => transactions
     .filter(t => {
       const d = new Date(t.date);
@@ -143,10 +130,6 @@ const App: React.FC = () => {
     fetchAdvice();
   }, [transactions.length]);
 
-  if (!user) {
-    return <AuthView onLogin={handleLogin} />;
-  }
-
   if (isOnboarding) {
     return (
       <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 font-sans">
@@ -156,7 +139,7 @@ const App: React.FC = () => {
           </div>
           {onboardingStep === 1 ? (
             <div className="space-y-6">
-              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде, {user}!</h2>
+              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде!</h2>
               <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход.</p>
               <input 
                 type="text" 
@@ -213,7 +196,7 @@ const App: React.FC = () => {
       </header>
       
       {activeTab === 'dashboard' && <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={(m, y) => {setSelectedMonth(m); setSelectedYear(y);}} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />}
-      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
+      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
       {activeTab === 'budget' && <BudgetView budgets={budgets} onUpdateBudget={(cat, limit) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />}
       {activeTab === 'reminders' && <RemindersView reminders={reminders} onAddReminder={(r) => setReminders(prev => [...prev, r])} onTogglePaid={(id) => setReminders(prev => prev.map(r => r.id === id ? {...r, isPaid: !r.isPaid} : r))} onDeleteReminder={(id) => setReminders(prev => prev.filter(r => r.id !== id))} onRequestPermission={async () => {}} />}
       {activeTab === 'goals' && <GoalsView goals={financialGoals} onAddGoal={(g) => setFinancialGoals(prev => [...prev, g])} onUpdateGoalProgress={(id, amt) => setFinancialGoals(prev => prev.map(g => g.id === id ? {...g, currentAmount: g.currentAmount + amt} : g))} onDeleteGoal={(id) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />}
