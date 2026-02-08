@@ -95,7 +95,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     try {
       const result = await analyzeQrData(qrData, categories);
       if (result) {
-        // Автоматско додавање
         const newTransaction: Transaction = {
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
@@ -109,7 +108,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         onAddTransaction(newTransaction);
       }
     } catch (err) {
-      alert("Грешка при анализа. Пробајте рачно.");
+      alert("Грешка при анализа на QR кодот.");
     } finally {
       setIsAnalyzing(false);
       setIsQrFound(false);
@@ -119,11 +118,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const openScanner = async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
       });
       setStream(s);
       setIsScannerOpen(true);
@@ -193,10 +188,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
               <div className={`w-64 h-64 border-2 rounded-[2rem] transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/20 scale-110' : 'border-white/30 bg-white/5'}`}>
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full">
                    <p className="text-[10px] font-black text-white uppercase tracking-widest whitespace-nowrap">
-                    {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR кодот'}
+                    {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR'}
                    </p>
                 </div>
-                {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-[scanLine_2s_infinite]"></div>}
+                {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-scanLine"></div>}
               </div>
             </div>
             
@@ -206,13 +201,11 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 50% { opacity: 1; }
                 100% { top: 90%; opacity: 0; }
               }
+              .animate-scanLine { animation: scanLine 2s infinite; position: absolute; }
             `}</style>
           </div>
-          
           <div className="p-8 w-full max-w-md">
-            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10 active:scale-95 transition-all">
-              Затвори камера
-            </button>
+            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10">Затвори камера</button>
           </div>
         </div>
       )}
@@ -222,8 +215,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
             <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight mb-2">Автоматско внесување...</h2>
-          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI ги обработува податоците од сметката.</p>
+          <h2 className="text-2xl font-black mb-2">Автоматско внесување...</h2>
+          <p className="text-indigo-100 font-medium opacity-80">AI ги обработува податоците од сметката.</p>
         </div>
       )}
 
@@ -242,28 +235,27 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           </div>
           
           <div className="flex flex-col md:flex-row gap-3">
-            <input type="text" placeholder="Опис / Продавач" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-900 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
-            <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-black text-slate-900" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
+            <input type="text" placeholder="Опис / Продавач" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-black text-indigo-600" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none cursor-pointer" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
+            <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
               <option value="AI">✦ AI Автоматски</option>
               {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
-            <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-slate-900 font-bold appearance-none disabled:opacity-50" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
+            <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold disabled:opacity-50" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
               {selectedMainCat === 'AI' ? <option>Чекај AI...</option> : categories[selectedMainCat as MainCategory]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
             </select>
           </div>
 
-          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">Додади во листа</button>
+          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg active:scale-95 transition-all">Додади во листа</button>
         </form>
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-100">
         {transactions.map(t => {
           const isEditing = editingId === t.id;
-
           return (
             <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4">
               <div className="flex items-center gap-4 flex-grow">
@@ -272,47 +264,26 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 </div>
                 <div className="flex-grow">
                   <p className="font-black text-slate-900 text-base">{t.description}</p>
-                  
                   {isEditing ? (
                     <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                      <select 
-                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
-                        value={editMainCat}
-                        onChange={(e) => {
-                          const newMain = e.target.value as MainCategory;
-                          setEditMainCat(newMain);
-                          setEditSubCat(categories[newMain][0] || '');
-                        }}
-                      >
+                      <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editMainCat} onChange={(e) => setEditMainCat(e.target.value as MainCategory)}>
                         {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
-                      <select 
-                        className="text-[10px] font-black uppercase p-1 border rounded bg-slate-50 outline-none focus:ring-1 focus:ring-indigo-500"
-                        value={editSubCat}
-                        onChange={(e) => setEditSubCat(e.target.value)}
-                      >
+                      <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editSubCat} onChange={(e) => setEditSubCat(e.target.value)}>
                         {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
                       </select>
                       <div className="flex gap-1">
-                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 uppercase px-2 py-1 bg-green-50 rounded">ОК</button>
-                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 uppercase px-2 py-1 bg-red-50 rounded flex items-center gap-1">
-                          <IconTrash className="w-3 h-3" />
+                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 px-2 py-1 bg-green-50 rounded">OK</button>
+                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 px-2 py-1 bg-red-50 rounded flex items-center gap-1">
+                          <IconTrash className="w-3 h-3" /> Избриши
                         </button>
-                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 uppercase px-2 py-1 bg-slate-100 rounded">X</button>
+                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-2 py-1 bg-slate-100 rounded">X</button>
                       </div>
                     </div>
                   ) : (
                     <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
                       {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
-                      {!t.isCategorizing && (
-                        <button 
-                          onClick={() => startEditing(t)}
-                          className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all ml-1"
-                          title="Промени/Избриши"
-                        >
-                          <IconEdit className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      {!t.isCategorizing && <button onClick={() => startEditing(t)} className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg ml-1"><IconEdit className="w-3.5 h-3.5" /></button>}
                     </p>
                   )}
                 </div>
