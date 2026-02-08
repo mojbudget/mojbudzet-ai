@@ -134,6 +134,40 @@ const App: React.FC = () => {
     fetchAdvice();
   }, [transactions.length]);
 
+  if (isOnboarding) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full animate-fadeIn text-center">
+          <div className="px-8 py-4 bg-indigo-600 rounded-[2rem] mx-auto mb-10 inline-flex items-center justify-center text-white shadow-2xl shadow-indigo-200">
+            <span className="text-2xl font-black tracking-tighter uppercase">Мој Буџет</span>
+          </div>
+          {onboardingStep === 1 ? (
+            <div className="space-y-6">
+              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде!</h2>
+              <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход.</p>
+              <input 
+                type="text" placeholder="пр: 45.000" 
+                className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none focus:border-indigo-500 font-black text-3xl text-center text-indigo-600 transition-all"
+                value={tempIncome.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+                onChange={(e) => setTempIncome(e.target.value.replace(/\D/g, ''))}
+              />
+              <button disabled={!tempIncome} onClick={() => setOnboardingStep(2)} className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase text-xs disabled:opacity-30 hover:bg-slate-800 transition-all shadow-lg">Продолжи</button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <h2 className="text-3xl font-black text-slate-900">Паметен Буџет</h2>
+              <p className="text-slate-500 font-medium leading-relaxed">Дали сакаш AI да ти предложи идеална распределба на твоите средства?</p>
+              <div className="space-y-3">
+                <button disabled={isGeneratingBudget} onClick={() => completeOnboarding(true)} className="w-full py-6 bg-indigo-600 text-white rounded-[1.5rem] font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all transform hover:scale-[1.02]">{isGeneratingBudget ? '✨ Се генерира...' : '✨ Да, предложи ми AI Буџет'}</button>
+                <button onClick={() => completeOnboarding(false)} className="w-full py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-[1.5rem] font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all">Не, ќе внесам рачно подоцна</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isBankConnected={isBankConnected}>
       <header className="mb-10 px-2 flex flex-col items-center justify-center text-center">
@@ -146,7 +180,6 @@ const App: React.FC = () => {
         </h1>
         <div className="w-12 h-1.5 bg-indigo-600 rounded-full mt-3"></div>
       </header>
-      
       {activeTab === 'dashboard' && <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={(m, y) => {setSelectedMonth(m); setSelectedYear(y);}} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />}
       {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
       {activeTab === 'budget' && <BudgetView budgets={budgets} onUpdateBudget={(cat, limit) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />}
