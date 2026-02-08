@@ -42,9 +42,6 @@ export const analyzeQrData = async (qrString: string, customCategories: SubCateg
   }
 };
 
-/**
- * Анализа на слика од сметка (Multimodal)
- */
 export const analyzeReceiptImage = async (base64Image: string, customCategories: SubCategoryMap): Promise<{description: string, amount: number, mainCategory: MainCategory, subCategory: string} | null> => {
   try {
     const response = await ai.models.generateContent({
