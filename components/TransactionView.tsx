@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
@@ -94,7 +95,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     try {
       const result = await analyzeQrData(qrData, categories);
       if (result) {
-        // Автоматско додавање со извлечениот износ
         const newTransaction: Transaction = {
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
