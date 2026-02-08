@@ -3,20 +3,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
 import { getTransactionIcon } from './Dashboard';
-import { analyzeReceiptImage } from '../services/geminiService';
-import { IconCamera, IconTransactions, IconEdit } from './Icons';
+import { analyzeQrData } from '../services/geminiService';
+import { IconCamera, IconTransactions, IconEdit, IconTrash } from './Icons';
 
 interface TransactionViewProps {
   transactions: Transaction[];
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  onDeleteTransaction: (id: string) => void;
   categories: SubCategoryMap;
   members: Member[];
   currentMemberId: string;
 }
 
 const TransactionView: React.FC<TransactionViewProps> = ({ 
-  transactions, onAddTransaction, onUpdateTransaction, categories, members, currentMemberId 
+  transactions, onAddTransaction, onUpdateTransaction, onDeleteTransaction, categories, members, currentMemberId 
 }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -78,8 +79,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
           if (code) {
             setIsQrFound(true);
-            const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-            processCapturedReceipt(base64);
+            processCapturedQr(code.data);
           }
         }
       }
@@ -88,21 +88,28 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     scanFrameRef.current = requestAnimationFrame(scan);
   };
 
-  const processCapturedReceipt = async (base64: string) => {
+  const processCapturedQr = async (qrData: string) => {
     setIsAnalyzing(true);
-    // Веднаш гасиме камера како кај Мој ДДВ
     closeScanner();
     
     try {
-      const result = await analyzeReceiptImage(base64, categories);
+      const result = await analyzeQrData(qrData, categories);
       if (result) {
-        setDescription(result.description);
-        setAmount(result.amount.toString());
-        setSelectedMainCat(result.mainCategory);
-        setSubCategory(result.subCategory);
+        // Автоматско додавање
+        const newTransaction: Transaction = {
+          id: Math.random().toString(36).substr(2, 9),
+          date: new Date().toISOString(),
+          description: result.description,
+          amount: -Math.abs(result.amount),
+          mainCategory: result.mainCategory,
+          subCategory: result.subCategory,
+          type: 'expense',
+          memberId: currentMemberId
+        };
+        onAddTransaction(newTransaction);
       }
     } catch (err) {
-      alert("Неуспешно читање. Ве молиме внесете ги податоците рачно.");
+      alert("Грешка при анализа. Пробајте рачно.");
     } finally {
       setIsAnalyzing(false);
       setIsQrFound(false);
@@ -122,7 +129,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       setIsScannerOpen(true);
       setIsQrFound(false);
     } catch (err) {
-      alert("Дозволете пристап до камерата за скенирање.");
+      alert("Дозволете пристап до камерата.");
     }
   };
 
@@ -182,7 +189,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
             
-            {/* Скенер оверлеј */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className={`w-64 h-64 border-2 rounded-[2rem] transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/20 scale-110' : 'border-white/30 bg-white/5'}`}>
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full">
@@ -190,7 +196,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                     {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR кодот'}
                    </p>
                 </div>
-                {/* Анимирана линија за скенирање */}
                 {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-[scanLine_2s_infinite]"></div>}
               </div>
             </div>
@@ -217,13 +222,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
             <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight mb-2">Обработка на податоци...</h2>
-          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI го анализира продавачот и износот од сметката.</p>
-          <div className="mt-12 flex gap-1">
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.2s]"></div>
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:0.4s]"></div>
-          </div>
+          <h2 className="text-2xl font-black tracking-tight mb-2">Автоматско внесување...</h2>
+          <p className="text-indigo-100 font-medium opacity-80 max-w-xs">AI ги обработува податоците од сметката.</p>
         </div>
       )}
 
@@ -295,7 +295,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                       </select>
                       <div className="flex gap-1">
                         <button onClick={saveEdit} className="text-[10px] font-black text-green-600 uppercase px-2 py-1 bg-green-50 rounded">ОК</button>
-                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-red-400 uppercase px-2 py-1 bg-red-50 rounded">X</button>
+                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 uppercase px-2 py-1 bg-red-50 rounded flex items-center gap-1">
+                          <IconTrash className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 uppercase px-2 py-1 bg-slate-100 rounded">X</button>
                       </div>
                     </div>
                   ) : (
@@ -305,7 +308,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                         <button 
                           onClick={() => startEditing(t)}
                           className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all ml-1"
-                          title="Промени категорија"
+                          title="Промени/Избриши"
                         >
                           <IconEdit className="w-3.5 h-3.5" />
                         </button>
