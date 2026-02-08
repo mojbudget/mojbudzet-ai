@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
@@ -95,6 +94,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     try {
       const result = await analyzeQrData(qrData, categories);
       if (result) {
+        // Автоматско додавање со извлечениот износ
         const newTransaction: Transaction = {
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
@@ -176,6 +176,13 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     }
   };
 
+  const handleDelete = (id: string) => {
+    if (window.confirm('Дали сигурно сакате да ја избришете оваа трансакција?')) {
+      onDeleteTransaction(id);
+      setEditingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
@@ -194,15 +201,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-scanLine"></div>}
               </div>
             </div>
-            
-            <style>{`
-              @keyframes scanLine {
-                0% { top: 10%; opacity: 0; }
-                50% { opacity: 1; }
-                100% { top: 90%; opacity: 0; }
-              }
-              .animate-scanLine { animation: scanLine 2s infinite; position: absolute; }
-            `}</style>
           </div>
           <div className="p-8 w-full max-w-md">
             <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10">Затвори камера</button>
@@ -215,8 +213,8 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
             <IconCamera className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-black mb-2">Автоматско внесување...</h2>
-          <p className="text-indigo-100 font-medium opacity-80">AI ги обработува податоците од сметката.</p>
+          <h2 className="text-2xl font-black mb-2 tracking-tight">Внесувам...</h2>
+          <p className="text-indigo-100 font-medium opacity-80">AI ги обработува податоците и износот.</p>
         </div>
       )}
 
@@ -265,19 +263,19 @@ const TransactionView: React.FC<TransactionViewProps> = ({
                 <div className="flex-grow">
                   <p className="font-black text-slate-900 text-base">{t.description}</p>
                   {isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center">
                       <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editMainCat} onChange={(e) => setEditMainCat(e.target.value as MainCategory)}>
                         {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                       <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editSubCat} onChange={(e) => setEditSubCat(e.target.value)}>
                         {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
                       </select>
-                      <div className="flex gap-1">
-                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 px-2 py-1 bg-green-50 rounded">OK</button>
-                        <button onClick={() => onDeleteTransaction(t.id)} className="text-[10px] font-black text-red-600 px-2 py-1 bg-red-50 rounded flex items-center gap-1">
-                          <IconTrash className="w-3 h-3" /> Избриши
+                      <div className="flex gap-1 ml-auto">
+                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 px-3 py-1 bg-green-50 rounded-lg uppercase tracking-widest">OK</button>
+                        <button onClick={() => handleDelete(t.id)} className="text-[10px] font-black text-red-600 px-3 py-1 bg-red-50 rounded-lg flex items-center gap-1 uppercase tracking-widest">
+                          <IconTrash className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-2 py-1 bg-slate-100 rounded">X</button>
+                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-3 py-1 bg-slate-100 rounded-lg uppercase tracking-widest">X</button>
                       </div>
                     </div>
                   ) : (
@@ -296,12 +294,6 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             </div>
           );
         })}
-        {transactions.length === 0 && (
-          <div className="text-center py-20 opacity-30">
-             <IconTransactions className="w-12 h-12 mx-auto mb-4" />
-             <p className="text-[10px] font-black uppercase tracking-widest">Нема трансакции</p>
-          </div>
-        )}
       </div>
     </div>
   );
