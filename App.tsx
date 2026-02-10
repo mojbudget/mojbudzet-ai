@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout, { TabType } from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -24,6 +23,10 @@ const App: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>(() => getSavedData('reminders', []));
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>(() => getSavedData('goals', []));
   const [categories, setCategories] = useState<SubCategoryMap>(() => getSavedData('categories', DefaultSubs));
+  
+  // КЕШ ЗА ШТЕДЕЊЕ ТОКЕНИ: Ги паметиме претходните категоризации за да не прашуваме AI повторно
+  const [catCache, setCatCache] = useState<Record<string, {main: MainCategory, sub: string}>>(() => getSavedData('cat_cache', {}));
+
   const [isBankConnected, setIsBankConnected] = useState(() => getSavedData('isBankConnected', false));
   const [cardInfo, setCardInfo] = useState<CardInfo | null>(() => getSavedData('cardInfo', null));
   const [householdName, setHouseholdName] = useState(() => getSavedData('householdName', 'Моето домаќинство'));
@@ -48,11 +51,12 @@ const App: React.FC = () => {
     localStorage.setItem('moj_budzet_reminders', JSON.stringify(reminders));
     localStorage.setItem('moj_budzet_goals', JSON.stringify(financialGoals));
     localStorage.setItem('moj_budzet_categories', JSON.stringify(categories));
+    localStorage.setItem('moj_budzet_cat_cache', JSON.stringify(catCache));
     localStorage.setItem('moj_budzet_isBankConnected', JSON.stringify(isBankConnected));
     localStorage.setItem('moj_budzet_cardInfo', JSON.stringify(cardInfo));
     localStorage.setItem('moj_budzet_householdName', JSON.stringify(householdName));
     localStorage.setItem('moj_budzet_members', JSON.stringify(members));
-  }, [transactions, budgets, reminders, financialGoals, categories, isBankConnected, cardInfo, householdName, members]);
+  }, [transactions, budgets, reminders, financialGoals, categories, catCache, isBankConnected, cardInfo, householdName, members]);
 
   const completeOnboarding = async (useAi: boolean) => {
     const incomeValue = parseFloat(tempIncome.replace(/\D/g, ''));
@@ -79,6 +83,20 @@ const App: React.FC = () => {
     pendingQueueRef.current = [];
     try {
       const results = await categorizeTransactionsBatch(queueToProcess, categories);
+      
+      // Ажурирај го кешот
+      const newCacheEntries = { ...catCache };
+      results.forEach(res => {
+        const trans = transactions.find(t => t.id === res.transactionId);
+        if (trans) {
+          newCacheEntries[trans.description.toLowerCase().trim()] = {
+            main: res.mainCategory,
+            sub: res.subCategory
+          };
+        }
+      });
+      setCatCache(newCacheEntries);
+
       setTransactions(prev => prev.map(t => {
         const res = results.find(r => r.transactionId === t.id);
         return res ? { ...t, mainCategory: res.mainCategory, subCategory: res.subCategory, isCategorizing: false } : t;
@@ -86,9 +104,23 @@ const App: React.FC = () => {
     } catch (e) { 
       setTransactions(prev => prev.map(t => t.isCategorizing ? { ...t, isCategorizing: false } : t));
     }
-  }, [categories]);
+  }, [categories, catCache, transactions]);
 
   const handleAddTransaction = (newTransaction: Transaction) => {
+    const descKey = newTransaction.description.toLowerCase().trim();
+    
+    // ПРОВЕРКА ВО КЕШ: Ако овој продавач е веќе познат, не троши токени
+    if (newTransaction.isCategorizing && catCache[descKey]) {
+      const cached = catCache[descKey];
+      setTransactions(prev => [{
+        ...newTransaction,
+        mainCategory: cached.main,
+        subCategory: cached.sub,
+        isCategorizing: false
+      }, ...prev]);
+      return;
+    }
+
     setTransactions(prev => [newTransaction, ...prev]);
     if (newTransaction.isCategorizing) {
       pendingQueueRef.current.push({ id: newTransaction.id, description: newTransaction.description });
@@ -126,7 +158,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchAdvice = async () => {
-      if (transactions.length > 1) {
+      if (transactions.length > 3) { // Совети само ако има барем 3 трансакции
         const advice = await getFinancialAdvice(transactions, budgets);
         setAiAdvice(advice);
       }
