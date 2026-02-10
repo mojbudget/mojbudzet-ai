@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout, { TabType } from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -23,16 +24,18 @@ const App: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>(() => getSavedData('reminders', []));
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>(() => getSavedData('goals', []));
   const [categories, setCategories] = useState<SubCategoryMap>(() => getSavedData('categories', DefaultSubs));
-  
-  // КЕШ ЗА ШТЕДЕЊЕ ТОКЕНИ: Ги паметиме претходните категоризации за да не прашуваме AI повторно
   const [catCache, setCatCache] = useState<Record<string, {main: MainCategory, sub: string}>>(() => getSavedData('cat_cache', {}));
-
   const [isBankConnected, setIsBankConnected] = useState(() => getSavedData('isBankConnected', false));
   const [cardInfo, setCardInfo] = useState<CardInfo | null>(() => getSavedData('cardInfo', null));
   const [householdName, setHouseholdName] = useState(() => getSavedData('householdName', 'Моето домаќинство'));
   const [members, setMembers] = useState<Member[]>(() => getSavedData('members', [{id: 'm1', name: 'Јас', avatarColor: '#6366f1'}]));
   
-  const [isOnboarding, setIsOnboarding] = useState(() => !localStorage.getItem('onboardingDone'));
+  // Проверка дали апликацијата треба да праша за почетна сума
+  const [isOnboarding, setIsOnboarding] = useState(() => {
+    const done = localStorage.getItem('moj_budzet_onboardingDone');
+    return !done || getSavedData('transactions', []).length === 0;
+  });
+  
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [tempIncome, setTempIncome] = useState('');
   const [isGeneratingBudget, setIsGeneratingBudget] = useState(false);
@@ -44,7 +47,6 @@ const App: React.FC = () => {
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingQueueRef = useRef<{ id: string; description: string }[]>([]);
 
-  // Persistence
   useEffect(() => { 
     localStorage.setItem('moj_budzet_transactions', JSON.stringify(transactions)); 
     localStorage.setItem('moj_budzet_budgets', JSON.stringify(budgets));
@@ -61,19 +63,34 @@ const App: React.FC = () => {
   const completeOnboarding = async (useAi: boolean) => {
     const incomeValue = parseFloat(tempIncome.replace(/\D/g, ''));
     if (isNaN(incomeValue) || incomeValue <= 0) return;
+    
     if (useAi) {
       setIsGeneratingBudget(true);
       try {
         const suggestions = await suggestBudget(incomeValue);
-        if (suggestions.length > 0) setBudgets(suggestions.map(s => ({ mainCategory: s.mainCategory, limit: s.amount, spent: 0 })));
+        if (suggestions.length > 0) {
+          setBudgets(suggestions.map(s => ({
+            mainCategory: s.mainCategory,
+            limit: s.amount,
+            spent: 0
+          })));
+        }
       } catch (e) {}
       setIsGeneratingBudget(false);
     }
+    
     setTransactions([{
-      id: 'init-income', date: new Date().toISOString(), description: 'Почетен приход',
-      amount: incomeValue, mainCategory: MainCategory.INCOME, subCategory: 'Плата', type: 'income', memberId: members[0].id
+      id: 'init-balance-' + Date.now(),
+      date: new Date().toISOString(),
+      description: 'Почетна состојба',
+      amount: incomeValue,
+      mainCategory: MainCategory.INCOME,
+      subCategory: 'Почетен биланс',
+      type: 'income',
+      memberId: members[0].id
     }]);
-    localStorage.setItem('onboardingDone', 'true');
+    
+    localStorage.setItem('moj_budzet_onboardingDone', 'true');
     setIsOnboarding(false);
   };
 
@@ -83,20 +100,12 @@ const App: React.FC = () => {
     pendingQueueRef.current = [];
     try {
       const results = await categorizeTransactionsBatch(queueToProcess, categories);
-      
-      // Ажурирај го кешот
-      const newCacheEntries = { ...catCache };
+      const newCache = { ...catCache };
       results.forEach(res => {
         const trans = transactions.find(t => t.id === res.transactionId);
-        if (trans) {
-          newCacheEntries[trans.description.toLowerCase().trim()] = {
-            main: res.mainCategory,
-            sub: res.subCategory
-          };
-        }
+        if (trans) newCache[trans.description.toLowerCase().trim()] = { main: res.mainCategory, sub: res.subCategory };
       });
-      setCatCache(newCacheEntries);
-
+      setCatCache(newCache);
       setTransactions(prev => prev.map(t => {
         const res = results.find(r => r.transactionId === t.id);
         return res ? { ...t, mainCategory: res.mainCategory, subCategory: res.subCategory, isCategorizing: false } : t;
@@ -108,19 +117,11 @@ const App: React.FC = () => {
 
   const handleAddTransaction = (newTransaction: Transaction) => {
     const descKey = newTransaction.description.toLowerCase().trim();
-    
-    // ПРОВЕРКА ВО КЕШ: Ако овој продавач е веќе познат, не троши токени
     if (newTransaction.isCategorizing && catCache[descKey]) {
       const cached = catCache[descKey];
-      setTransactions(prev => [{
-        ...newTransaction,
-        mainCategory: cached.main,
-        subCategory: cached.sub,
-        isCategorizing: false
-      }, ...prev]);
+      setTransactions(prev => [{ ...newTransaction, mainCategory: cached.main, subCategory: cached.sub, isCategorizing: false }, ...prev]);
       return;
     }
-
     setTransactions(prev => [newTransaction, ...prev]);
     if (newTransaction.isCategorizing) {
       pendingQueueRef.current.push({ id: newTransaction.id, description: newTransaction.description });
@@ -129,12 +130,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateTransaction = (id: string, updates: Partial<Transaction>) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  };
-
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
+  const handleResetData = () => {
+    if (window.confirm("Дали сте сигурни дека сакате да ги избришете СИТЕ податоци? Ова не може да се врати назад.")) {
+      localStorage.clear();
+      window.location.reload();
+    }
   };
 
   const totalIncomeForMonth = useMemo(() => transactions
@@ -158,7 +158,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchAdvice = async () => {
-      if (transactions.length > 3) { // Совети само ако има барем 3 трансакции
+      if (transactions.length > 3) {
         const advice = await getFinancialAdvice(transactions, budgets);
         setAiAdvice(advice);
       }
@@ -175,19 +175,22 @@ const App: React.FC = () => {
           </div>
           {onboardingStep === 1 ? (
             <div className="space-y-6">
-              <h2 className="text-3xl font-black text-slate-900 leading-tight">Добредојде!</h2>
-              <p className="text-slate-500 font-medium">За да почнеме, внеси го твојот месечен приход.</p>
-              <input 
-                type="text" 
-                placeholder="пр: 45.000" 
-                className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none focus:border-indigo-500 font-black text-3xl text-center text-indigo-600 transition-all"
-                value={tempIncome.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
-                onChange={(e) => setTempIncome(e.target.value.replace(/\D/g, ''))}
-              />
+              <h2 className="text-3xl font-black text-slate-900 leading-tight">Здраво! 👋</h2>
+              <p className="text-slate-500 font-medium">За да започнеме, внеси ја сумата со која располагаш во моментов (твојот буџет).</p>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  placeholder="пр: 30.000" 
+                  className="w-full p-8 bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] outline-none focus:border-indigo-500 font-black text-4xl text-center text-indigo-600 transition-all shadow-inner"
+                  value={tempIncome.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+                  onChange={(e) => setTempIncome(e.target.value.replace(/\D/g, ''))}
+                />
+                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] font-black text-slate-300 uppercase tracking-widest">денари</span>
+              </div>
               <button 
                 disabled={!tempIncome}
                 onClick={() => setOnboardingStep(2)}
-                className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-widest text-xs disabled:opacity-30 hover:bg-slate-800 transition-all shadow-lg"
+                className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs disabled:opacity-30 hover:bg-slate-800 transition-all shadow-xl"
               >
                 Продолжи
               </button>
@@ -232,11 +235,11 @@ const App: React.FC = () => {
       </header>
       
       {activeTab === 'dashboard' && <Dashboard transactions={transactions} budgets={budgets} aiAdvice={aiAdvice} selectedMonth={selectedMonth} selectedYear={selectedYear} onMonthChange={(m, y) => {setSelectedMonth(m); setSelectedYear(y);}} carryOverBalance={carryOverBalance} householdName={householdName} onHouseholdNameChange={setHouseholdName} isBankConnected={isBankConnected} />}
-      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} categories={categories} members={members} currentMemberId={members[0].id} />}
+      {activeTab === 'transactions' && <TransactionView transactions={transactions} onAddTransaction={handleAddTransaction} onUpdateTransaction={(id, u) => setTransactions(prev => prev.map(t => t.id === id ? {...t, ...u} : t))} onDeleteTransaction={(id) => setTransactions(prev => prev.filter(t => t.id !== id))} categories={categories} members={members} currentMemberId={members[0].id} />}
       {activeTab === 'budget' && <BudgetView budgets={budgets} onUpdateBudget={(cat, limit) => setBudgets(prev => prev.map(b => b.mainCategory === cat ? {...b, limit} : b))} totalIncome={totalIncomeForMonth} />}
       {activeTab === 'reminders' && <RemindersView reminders={reminders} onAddReminder={(r) => setReminders(prev => [...prev, r])} onTogglePaid={(id) => setReminders(prev => prev.map(r => r.id === id ? {...r, isPaid: !r.isPaid} : r))} onDeleteReminder={(id) => setReminders(prev => prev.filter(r => r.id !== id))} onRequestPermission={async () => {}} />}
       {activeTab === 'goals' && <GoalsView goals={financialGoals} onAddGoal={(g) => setFinancialGoals(prev => [...prev, g])} onUpdateGoalProgress={(id, amt) => setFinancialGoals(prev => prev.map(g => g.id === id ? {...g, currentAmount: g.currentAmount + amt} : g))} onDeleteGoal={(id) => setFinancialGoals(prev => prev.filter(g => g.id !== id))} monthlyIncome={totalIncomeForMonth} monthlyExpenses={totalExpensesForMonth} />}
-      {activeTab === 'settings' && <SettingsView categories={categories} onUpdateCategories={setCategories} isBankConnected={isBankConnected} onToggleBank={(s) => setIsBankConnected(s)} cardInfo={cardInfo} onUpdateCardInfo={setCardInfo} onSimulateTransaction={() => {}} />}
+      {activeTab === 'settings' && <SettingsView categories={categories} onUpdateCategories={setCategories} isBankConnected={isBankConnected} onToggleBank={(s) => setIsBankConnected(s)} cardInfo={cardInfo} onUpdateCardInfo={setCardInfo} onSimulateTransaction={() => {}} onResetData={handleResetData} />}
     </Layout>
   );
 };
