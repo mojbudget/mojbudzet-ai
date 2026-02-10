@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
@@ -61,22 +60,16 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const startScanLoop = () => {
     const scan = () => {
       if (!videoRef.current || !canvasRef.current || isAnalyzing || isQrFound) return;
-      
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
-
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
           if (code) {
             setIsQrFound(true);
             processCapturedQr(code.data);
@@ -91,11 +84,11 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const processCapturedQr = async (qrData: string) => {
     setIsAnalyzing(true);
     closeScanner();
-    
     try {
       const result = await analyzeQrData(qrData, categories);
       if (result) {
-        const newTransaction: Transaction = {
+        // Автоматско додавање со извлечените податоци
+        onAddTransaction({
           id: Math.random().toString(36).substr(2, 9),
           date: new Date().toISOString(),
           description: result.description,
@@ -104,11 +97,10 @@ const TransactionView: React.FC<TransactionViewProps> = ({
           subCategory: result.subCategory,
           type: 'expense',
           memberId: currentMemberId
-        };
-        onAddTransaction(newTransaction);
+        });
       }
     } catch (err) {
-      alert("Грешка при анализа на QR кодот.");
+      alert("Грешка при анализа на кодот.");
     } finally {
       setIsAnalyzing(false);
       setIsQrFound(false);
@@ -117,111 +109,65 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const openScanner = async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
-      });
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       setStream(s);
       setIsScannerOpen(true);
-      setIsQrFound(false);
     } catch (err) {
-      alert("Дозволете пристап до камерата.");
+      alert("Дозволете пристап до камера.");
     }
   };
 
   const closeScanner = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    setStream(null);
     setIsScannerOpen(false);
-    if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const rawAmount = parseFloat(amount.replace(/\D/g, ''));
     if (!description || isNaN(rawAmount)) return;
-    
     const isAi = selectedMainCat === 'AI';
     const mainCat = isAi ? (type === 'income' ? MainCategory.INCOME : MainCategory.NEEDS) : (selectedMainCat as MainCategory);
-
     onAddTransaction({
       id: Math.random().toString(36).substr(2, 9),
       date: new Date().toISOString(),
       description,
       amount: type === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount),
       mainCategory: mainCat,
-      subCategory: isAi ? '✨ Размислувам...' : (subCategory || mainCat),
-      type: type,
+      subCategory: isAi ? '✨ Се категоризира...' : (subCategory || mainCat),
+      type,
       isCategorizing: isAi,
       memberId: currentMemberId
     });
-    
     setDescription(''); setAmount(''); setSelectedMainCat('AI');
-  };
-
-  const startEditing = (t: Transaction) => {
-    setEditingId(t.id);
-    setEditMainCat(t.mainCategory);
-    setEditSubCat(t.subCategory);
-  };
-
-  const saveEdit = () => {
-    if (editingId) {
-      onUpdateTransaction(editingId, {
-        mainCategory: editMainCat,
-        subCategory: editSubCat
-      });
-      setEditingId(null);
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    if (window.confirm('Дали сигурно сакате да ја избришете оваа трансакција?')) {
-      onDeleteTransaction(id);
-      setEditingId(null);
-    }
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
       {isScannerOpen && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
-          <div className="relative w-full max-w-md aspect-[3/4] overflow-hidden bg-slate-900 shadow-2xl rounded-b-[3rem]">
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <canvas ref={canvasRef} className="hidden" />
-            
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className={`w-64 h-64 border-2 rounded-[2rem] transition-all duration-300 ${isQrFound ? 'border-green-500 bg-green-500/20 scale-110' : 'border-white/30 bg-white/5'}`}>
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full">
-                   <p className="text-[10px] font-black text-white uppercase tracking-widest whitespace-nowrap">
-                    {isQrFound ? 'ДЕТЕКТИРАНО!' : 'Насочи кон QR'}
-                   </p>
-                </div>
-                {!isQrFound && <div className="absolute inset-x-4 top-0 h-0.5 bg-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.5)] animate-scanLine"></div>}
-              </div>
-            </div>
+          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          <canvas ref={canvasRef} className="hidden" />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+             <div className="w-64 h-64 border-2 border-white/30 rounded-3xl"></div>
           </div>
-          <div className="p-8 w-full max-w-md">
-            <button onClick={closeScanner} className="w-full py-5 bg-white/10 text-white rounded-3xl font-black uppercase text-xs backdrop-blur-xl border border-white/10">Затвори камера</button>
-          </div>
+          <button onClick={closeScanner} className="absolute bottom-10 px-8 py-4 bg-white/20 text-white rounded-full backdrop-blur-md font-black uppercase tracking-widest text-[10px]">Затвори камера</button>
         </div>
       )}
 
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[110] bg-indigo-600 flex flex-col items-center justify-center text-white p-10 text-center animate-fadeIn">
-          <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 animate-pulse">
-            <IconCamera className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-2xl font-black mb-2 tracking-tight">Внесувам...</h2>
-          <p className="text-indigo-100 font-medium opacity-80">AI ги обработува податоците и износот.</p>
+        <div className="fixed inset-0 z-[110] bg-indigo-600/90 flex flex-col items-center justify-center text-white p-10 text-center">
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
+          <h2 className="text-xl font-black mb-1">Анализа на сметка...</h2>
+          <p className="text-xs font-medium opacity-80 uppercase tracking-widest">AI ги извлекува износот и категоријата</p>
         </div>
       )}
 
       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Внес на трансакција</h3>
-          <button onClick={openScanner} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-indigo-100 active:scale-95 transition-all">
+          <button onClick={openScanner} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95 transition-all">
             <IconCamera className="w-3.5 h-3.5" /> Скенирај QR
           </button>
         </div>
@@ -231,65 +177,48 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             <button type="button" onClick={() => setType('expense')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'expense' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ОДЛИВ</button>
             <button type="button" onClick={() => setType('income')} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${type === 'income' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>ПРИЛИВ</button>
           </div>
-          
           <div className="flex flex-col md:flex-row gap-3">
-            <input type="text" placeholder="Опис / Продавач" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
-            <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-black text-indigo-600" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
+            <input type="text" placeholder="Опис / Продавач" className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input type="text" inputMode="numeric" placeholder="Износ" className="w-full md:w-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-black text-indigo-600" value={amount.replace(/\B(?=(\d{3})+(?!\d))/g, ".")} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
-            <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
+            <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold cursor-pointer" value={selectedMainCat} onChange={(e) => setSelectedMainCat(e.target.value)}>
               <option value="AI">✦ AI Автоматски</option>
               {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
-            <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold disabled:opacity-50" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
+            <select disabled={selectedMainCat === 'AI'} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold disabled:opacity-50 cursor-pointer" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
               {selectedMainCat === 'AI' ? <option>Чекај AI...</option> : categories[selectedMainCat as MainCategory]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
             </select>
           </div>
-
           <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg active:scale-95 transition-all">Додади во листа</button>
         </form>
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-100">
         {transactions.map(t => {
-          const isEditing = editingId === t.id;
           return (
-            <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4">
+            <div key={t.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between group gap-4 hover:bg-slate-50 transition-colors">
               <div className="flex items-center gap-4 flex-grow">
-                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-colors shadow-inner">
                   {getTransactionIcon(t.subCategory, t.mainCategory)}
                 </div>
                 <div className="flex-grow">
                   <p className="font-black text-slate-900 text-base">{t.description}</p>
-                  {isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2 items-center">
-                      <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editMainCat} onChange={(e) => setEditMainCat(e.target.value as MainCategory)}>
-                        {Object.values(MainCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                      </select>
-                      <select className="text-[10px] font-black p-1 border rounded bg-slate-50" value={editSubCat} onChange={(e) => setEditSubCat(e.target.value)}>
-                        {categories[editMainCat]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
-                      </select>
-                      <div className="flex gap-1 ml-auto">
-                        <button onClick={saveEdit} className="text-[10px] font-black text-green-600 px-3 py-1 bg-green-50 rounded-lg uppercase tracking-widest">OK</button>
-                        <button onClick={() => handleDelete(t.id)} className="text-[10px] font-black text-red-600 px-3 py-1 bg-red-50 rounded-lg flex items-center gap-1 uppercase tracking-widest">
-                          <IconTrash className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="text-[10px] font-black text-slate-400 px-3 py-1 bg-slate-100 rounded-lg uppercase tracking-widest">X</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
+                  <div className="flex items-center gap-2">
+                    <p className={`text-[9px] font-black uppercase tracking-widest ${t.isCategorizing ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`}>
                       {t.isCategorizing ? '✦ СЕ КАТЕГОРИЗИРА...' : t.subCategory}
-                      {!t.isCategorizing && <button onClick={() => startEditing(t)} className="text-indigo-400 hover:text-indigo-600 p-1 rounded-lg ml-1"><IconEdit className="w-3.5 h-3.5" /></button>}
                     </p>
-                  )}
+                    <button 
+                      onClick={() => { if(window.confirm("Избриши?")) onDeleteTransaction(t.id); }}
+                      className="opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-500 transition-all p-1"
+                    >
+                      <IconTrash className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between md:justify-end gap-4">
-                <div className={`text-sm font-black whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
-                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
-                </div>
+              <div className={`text-sm font-black whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-slate-900'}`}>
+                {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toLocaleString('mk-MK')} ден.
               </div>
             </div>
           );
