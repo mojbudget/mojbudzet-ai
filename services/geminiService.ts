@@ -4,9 +4,16 @@ import { MainCategory, SubCategoryMap, AICategorizationResponse, AISuggestedBudg
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_INSTRUCTION = `Ти си македонски финансиски експерт. Твоја задача е исклучиво да ги категоризираш трошоците врз основа на податоци добиени од QR код или слика од македонска фискална сметка.
-Ако податоците се MojDDV линк (со параметри како am, dt, и сл.), категоризирај го трошокот и извлечи ја точната сума од параметрите.
-Врати исклучиво JSON.`;
+const SYSTEM_INSTRUCTION = `Ти си македонски финансиски експерт за анализа на фискални сметки. 
+Твоја задача е да извлечеш податоци од QR код кој најчесто е MojDDV линк.
+
+ПРАВИЛА ЗА ИЗВЛЕКУВАЊЕ:
+1. Ако линкот содржи параметар 'am=', таа бројка е ВКУПНАТА СУМА (износот) на сметката. Извлечи ја точно таа бројка.
+2. Ако линкот содржи 'dt=', тоа е датумот.
+3. Врз основа на останатите параметри или доменот во линкот, одреди го продавачот (description).
+4. Категоризирај го трошокот во една од понудените категории.
+
+Врати исклучиво JSON објект.`;
 
 /**
  * Анализа на текстуални податоци добиени директно од QR код
@@ -16,7 +23,9 @@ export const analyzeQrData = async (qrString: string, customCategories: SubCateg
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
-        parts: [{ text: `Врз основа на овој QR код: "${qrString}", одреди ја категоријата и извлечи го износот (amount) од линкот. Користи ги овие достапни поткатегории: ${JSON.stringify(customCategories)}.` }]
+        parts: [{ text: `Анализирај го овој македонски QR код: "${qrString}". 
+        ПРОНАЈДИ ГО ИЗНОСОТ (параметарот am) И КАТЕГОРИЗИРАЈ ГО.
+        Достапни поткатегории: ${JSON.stringify(customCategories)}.` }]
       },
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -24,8 +33,8 @@ export const analyzeQrData = async (qrString: string, customCategories: SubCateg
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            description: { type: Type.STRING, description: "Краток опис (пр. Маркет, Ресторан)" },
-            amount: { type: Type.NUMBER, description: "Вкупниот износ од сметката" },
+            description: { type: Type.STRING, description: "Име на маркет/продавница" },
+            amount: { type: Type.NUMBER, description: "Точниот износ извлечен од 'am' параметарот" },
             mainCategory: { type: Type.STRING },
             subCategory: { type: Type.STRING },
           },
@@ -35,7 +44,12 @@ export const analyzeQrData = async (qrString: string, customCategories: SubCateg
     });
 
     const text = response.text?.trim();
-    return text ? JSON.parse(text) : null;
+    if (!text) return null;
+    
+    const result = JSON.parse(text);
+    // Дополнителна заштита: Ако сумата е нереално голема или мала поради грешка во AI, 
+    // овде може да се додаде рачна проверка на стрингот ако е потребно.
+    return result;
   } catch (error) {
     console.error("QR Analysis Error:", error);
     return null;
@@ -84,10 +98,10 @@ export const categorizeTransactionsBatch = async (
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { 
-        parts: [{ text: `Категоризирај: ${JSON.stringify(items)}.` }] 
+        parts: [{ text: `Категоризирај ги овие трошоци: ${JSON.stringify(items)}. Користи ги овие категории ако е можно: ${JSON.stringify(customCategories)}.` }] 
       },
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction: "Врати исклучиво JSON низа со категории.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -113,9 +127,9 @@ export const suggestBudget = async (income: number): Promise<AISuggestedBudget[]
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: { parts: [{ text: `Буџет за ${income} ден.` }] },
+      contents: { parts: [{ text: `Предложи буџет за месечен приход од ${income} денари.` }] },
       config: {
-        systemInstruction: "Врати JSON низа: Потреби, Желби, Итни случаи, Инвестиции.",
+        systemInstruction: "Врати JSON низа со предлог распределба за категориите: Потреби, Желби, Итни случаи, Инвестиции.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -140,8 +154,8 @@ export const getFinancialAdvice = async (transactions: any[], budgets: any[]): P
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: { parts: [{ text: `Совет на македонски.` }] },
-      config: { systemInstruction: "Биди краток и мотивирачки.", temperature: 0.7 }
+      contents: { parts: [{ text: `Врз основа на овие трансакции: ${JSON.stringify(transactions.slice(0, 10))}, дај еден краток финансиски совет на македонски.` }] },
+      config: { systemInstruction: "Биди краток, мотивирачки и користи македонски јазик.", temperature: 0.7 }
     });
     return response.text || "Продолжи со паметното штедење!";
   } catch (error) { return "Следи ги твоите трошоци редовно."; }
@@ -151,8 +165,8 @@ export const getGoalStrategy = async (goal: FinancialGoal, monthlyIncome: number
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: { parts: [{ text: `План на македонски.` }] },
-      config: { systemInstruction: "3 кратки чекори." }
+      contents: { parts: [{ text: `Направи стратегија за штедење за целта: ${goal.title}, со буџет од ${monthlyIncome} и трошоци ${monthlyExpenses}.` }] },
+      config: { systemInstruction: "Дај 3 кратки и конкретни чекори на македонски." }
     });
     return response.text || "Штеди фиксен износ секој месец.";
   } catch (error) { return "Грешка при генерирање стратегија."; }
