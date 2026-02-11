@@ -198,7 +198,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
               {selectedMainCat === 'AI' ? <option>Чекај AI...</option> : categories[selectedMainCat as MainCategory]?.map(sub => <option key={sub} value={sub}>{sub}</option>)}
             </select>
           </div>
-          <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-slate-200 transition-all active:scale-[0.98]">Додади во листа</button>
+          <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]">Додади во листа</button>
         </form>
       </div>
 
