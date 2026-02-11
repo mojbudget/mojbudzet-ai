@@ -76,7 +76,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     const expenses = filteredTransactions.filter(t => t.type === 'expense');
     
     if (expenses.length === 0) {
-      // Празен графикон ако нема трошоци
       return [{ name: 'Нема трошоци', value: 1, fill: '#f1f5f9', isEmpty: true }];
     }
 
@@ -124,9 +123,9 @@ const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-2xl font-black text-green-600">+{stats.income.toLocaleString('mk-MK')} <span className="text-xs">ден.</span></p>
         </div>
         
-        <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl flex flex-col items-center text-center transform md:scale-110 z-10 border-4 border-white">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Биланс</p>
-          <p className="text-3xl font-black text-white">{stats.currentBalance.toLocaleString('mk-MK')} <span className="text-sm font-normal text-slate-400">ден.</span></p>
+        <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl shadow-indigo-200 flex flex-col items-center text-center transform md:scale-110 z-10 border-4 border-white">
+          <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Биланс</p>
+          <p className="text-3xl font-black text-white">{stats.currentBalance.toLocaleString('mk-MK')} <span className="text-sm font-normal text-indigo-200">ден.</span></p>
         </div>
 
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 flex flex-col items-center text-center shadow-sm">
