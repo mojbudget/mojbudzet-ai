@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts';
 import { Transaction, Budget, MainCategory } from '../types';
@@ -123,7 +124,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-2xl font-black text-green-600">+{stats.income.toLocaleString('mk-MK')} <span className="text-xs">ден.</span></p>
         </div>
         
-        <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl shadow-indigo-200 flex flex-col items-center text-center transform md:scale-110 z-10 border-4 border-white">
+        {/* КАРТИЧКА ЗА БИЛАНС ВО ИНДИГО БОЈА */}
+        <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl shadow-indigo-100 flex flex-col items-center text-center transform md:scale-110 z-10 border-4 border-white">
           <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Биланс</p>
           <p className="text-3xl font-black text-white">{stats.currentBalance.toLocaleString('mk-MK')} <span className="text-sm font-normal text-indigo-200">ден.</span></p>
         </div>
