@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import jsQR from 'jsqr';
 import { Transaction, MainCategory, SubCategoryMap, Member } from '../types';
@@ -48,20 +49,25 @@ const TransactionView: React.FC<TransactionViewProps> = ({
     stopScanner();
     try {
       const result = await analyzeQrData(data, categories);
-      if (result) {
+      if (result && result.amount) {
+        // Обезбедуваме дека сумата е позитивна вредност пред да ја претвориме во трошок
+        const finalAmount = Math.abs(Number(result.amount));
+        
         onAddTransaction({
           id: 'qr-' + Date.now(),
           date: new Date().toISOString(),
-          description: result.description,
-          amount: -Math.abs(result.amount),
-          mainCategory: result.mainCategory,
-          subCategory: result.subCategory,
+          description: result.description || 'Сметка од QR',
+          amount: -finalAmount, // Сметката е секогаш трошок (негативна вредност)
+          mainCategory: result.mainCategory as MainCategory || MainCategory.NEEDS,
+          subCategory: result.subCategory || 'Скенирано',
           type: 'expense',
           memberId: currentMemberId
         });
+      } else {
+        alert("Не можев да го извлечам износот. Обидете се повторно или внесете рачно.");
       }
     } catch (err) {
-      alert("Неуспешно скенирање.");
+      alert("Грешка при анализа на QR кодот.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -107,7 +113,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       setStream(s);
       setIsScannerOpen(true);
     } catch (err) {
-      alert("Камерата е оневозможена.");
+      alert("Овозможете пристап до камерата во нагодувањата.");
     }
   };
 
@@ -168,7 +174,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="fixed inset-0 z-[110] bg-slate-900/90 flex flex-col items-center justify-center text-white p-10 text-center backdrop-blur-sm">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
           <h2 className="text-xl font-black mb-1">AI чита сметка...</h2>
-          <p className="text-[10px] font-black opacity-50 uppercase tracking-widest">Се обработуваат податоците од QR кодот</p>
+          <p className="text-[10px] font-black opacity-50 uppercase tracking-widest">Се извлекува точната сума од QR кодот</p>
         </div>
       )}
 
@@ -229,6 +235,11 @@ const TransactionView: React.FC<TransactionViewProps> = ({
             </div>
           </div>
         ))}
+        {transactions.length === 0 && (
+          <div className="text-center py-20 bg-slate-50">
+             <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Немате внесено трансакции</p>
+          </div>
+        )}
       </div>
     </div>
   );
