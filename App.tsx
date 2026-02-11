@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout, { TabType } from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -30,7 +29,6 @@ const App: React.FC = () => {
   const [householdName, setHouseholdName] = useState(() => getSavedData('householdName', 'Моето домаќинство'));
   const [members, setMembers] = useState<Member[]>(() => getSavedData('members', [{id: 'm1', name: 'Јас', avatarColor: '#6366f1'}]));
   
-  // Проверка дали апликацијата треба да праша за почетна сума
   const [isOnboarding, setIsOnboarding] = useState(() => {
     const done = localStorage.getItem('moj_budzet_onboardingDone');
     return !done || getSavedData('transactions', []).length === 0;
@@ -190,7 +188,7 @@ const App: React.FC = () => {
               <button 
                 disabled={!tempIncome}
                 onClick={() => setOnboardingStep(2)}
-                className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs disabled:opacity-30 hover:bg-slate-800 transition-all shadow-xl"
+                className="w-full py-6 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs disabled:opacity-30 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
               >
                 Продолжи
               </button>
