@@ -83,33 +83,43 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (ctx) {
         scanFrameCountRef.current += 1;
-        // Наизменично скенирање во 2 фази за оптимални резултати:
-        // Парен фрејм: скенирање со зумирање/кроп на центарот за мали кодови на поголема оддалеченост
-        // Непарен фрејм: скенирање на цел екран во полна резолуција
-        const useCropped = scanFrameCountRef.current % 2 === 0;
+        
+        let sx = 0;
+        let sy = 0;
+        let sWidth = video.videoWidth;
+        let sHeight = video.videoHeight;
+        
+        const frameMod = scanFrameCountRef.current % 3;
 
-        if (useCropped) {
-          const sourceSize = Math.min(video.videoWidth, video.videoHeight);
-          const cropSize = sourceSize * 0.65;
-          const sx = (video.videoWidth - cropSize) / 2;
-          const sy = (video.videoHeight - cropSize) / 2;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          if (frameMod === 1) {
+            // 70% цонтрален исечок - соодветствува на нишанот (без смалување на резолуција/заматување)
+            const sourceSize = Math.min(video.videoWidth, video.videoHeight);
+            sWidth = Math.floor(sourceSize * 0.75);
+            sHeight = sWidth;
+            sx = Math.floor((video.videoWidth - sWidth) / 2);
+            sy = Math.floor((video.videoHeight - sHeight) / 2);
+          } else if (frameMod === 2) {
+            // 45% засилен зумиран исечок - за помали кодови (без смалување на резолуција/заматување)
+            const sourceSize = Math.min(video.videoWidth, video.videoHeight);
+            sWidth = Math.floor(sourceSize * 0.45);
+            sHeight = sWidth;
+            sx = Math.floor((video.videoWidth - sWidth) / 2);
+            sy = Math.floor((video.videoHeight - sHeight) / 2);
+          }
 
-          canvas.width = 400;
-          canvas.height = 400;
-          ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, canvas.width, canvas.height);
-        } else {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        }
+          canvas.width = sWidth;
+          canvas.height = sHeight;
+          ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
 
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-        if (code) {
-          processQr(code.data);
-          return;
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+          if (code) {
+            processQr(code.data);
+            return;
+          }
         }
       }
     }
