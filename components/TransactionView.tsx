@@ -32,6 +32,7 @@ const TransactionView: React.FC<TransactionViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const requestRef = useRef<number>(0);
+  const scanFrameCountRef = useRef<number>(0);
 
   const stopScanner = useCallback(() => {
     if (stream) {
@@ -81,9 +82,27 @@ const TransactionView: React.FC<TransactionViewProps> = ({
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        scanFrameCountRef.current += 1;
+        // Наизменично скенирање во 2 фази за оптимални резултати:
+        // Парен фрејм: скенирање со зумирање/кроп на центарот за мали кодови на поголема оддалеченост
+        // Непарен фрејм: скенирање на цел екран во полна резолуција
+        const useCropped = scanFrameCountRef.current % 2 === 0;
+
+        if (useCropped) {
+          const sourceSize = Math.min(video.videoWidth, video.videoHeight);
+          const cropSize = sourceSize * 0.65;
+          const sx = (video.videoWidth - cropSize) / 2;
+          const sy = (video.videoHeight - cropSize) / 2;
+
+          canvas.width = 400;
+          canvas.height = 400;
+          ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, canvas.width, canvas.height);
+        } else {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "dontInvert",
@@ -109,7 +128,13 @@ const TransactionView: React.FC<TransactionViewProps> = ({
 
   const startScanner = async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const s = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
       setStream(s);
       setIsScannerOpen(true);
     } catch (err) {
@@ -153,12 +178,32 @@ const TransactionView: React.FC<TransactionViewProps> = ({
         <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           <canvas ref={canvasRef} className="hidden" />
+          
+          {/* Стилизиран МојДДВ Нишан со затемнет семитранспарентен бекграунд околу средината */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-             <div className="w-64 h-64 border-2 border-indigo-500/50 rounded-[2.5rem] relative overflow-hidden shadow-[0_0_100px_rgba(79,70,229,0.3)]">
-                <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/80 animate-[scan_2s_infinite]"></div>
-             </div>
+            <div className="w-72 h-72 border-2 border-indigo-500 rounded-[2.5rem] relative shadow-[0_0_0_9999px_rgba(15,23,42,0.65),0_0_40px_rgba(79,70,229,0.4)] overflow-hidden">
+              {/* Црвена ласерска линија за скенирање */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-500 shadow-[0_0_8px_#ef4444] animate-[scan_2s_infinite]"></div>
+              
+              {/* Агли на нишанот (за подобра прецизност при порамнување) */}
+              <div className="absolute top-5 left-5 w-6 h-6 border-t-4 border-l-4 border-white rounded-tl-sm"></div>
+              <div className="absolute top-5 right-5 w-6 h-6 border-t-4 border-r-4 border-white rounded-tr-sm"></div>
+              <div className="absolute bottom-5 left-5 w-6 h-6 border-b-4 border-l-4 border-white rounded-bl-sm"></div>
+              <div className="absolute bottom-5 right-5 w-6 h-6 border-b-4 border-r-4 border-white rounded-br-sm"></div>
+            </div>
           </div>
-          <button onClick={stopScanner} className="absolute bottom-10 px-8 py-4 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest text-[10px] shadow-2xl">Затвори</button>
+
+          {/* Информативен Водич за корисникот во однос на фокусот */}
+          <div className="absolute bottom-28 left-4 right-4 text-center pointer-events-none flex flex-col items-center">
+            <span className="px-5 py-2.5 bg-slate-950/90 backdrop-blur-md text-white font-black text-[10px] uppercase tracking-widest rounded-full shadow-lg border border-white/10 text-center max-w-xs">
+              Порамнете го QR кодот во рамката
+            </span>
+            <span className="mt-2 text-white/70 text-[9px] font-black uppercase tracking-widest text-center">
+              Држете ја сметката на 15-20 см растојание за подобар фокус
+            </span>
+          </div>
+
+          <button onClick={stopScanner} className="absolute bottom-10 px-8 py-4 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest text-[10px] shadow-2xl active:scale-95 transition-transform">Затвори</button>
           <style>{`
             @keyframes scan {
               0% { top: 0%; opacity: 0; }
